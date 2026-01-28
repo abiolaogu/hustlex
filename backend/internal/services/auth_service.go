@@ -13,8 +13,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/hustlex/backend/internal/config"
-	"github.com/hustlex/backend/internal/models"
+	"hustlex/internal/config"
+	"hustlex/internal/models"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"

@@ -843,8 +843,8 @@ func (h *TaskHandler) HandleUserCreditScoreRecalc(ctx context.Context, t *asynq.
 		TotalLoans         int
 		RepaidOnTime       int
 		DefaultedLoans     int
-		CompletedSavings   int
-		CompletedGigs      int
+		CompletedSavings   int64
+		CompletedGigs      int64
 		AccountAgeMonths   int
 		WalletBalance      int64
 		TotalEarnings      int64
@@ -859,16 +859,16 @@ func (h *TaskHandler) HandleUserCreditScoreRecalc(ctx context.Context, t *asynq.
 	// Savings participation
 	h.db.Table("circle_memberships").Joins("JOIN savings_circles ON savings_circles.id = circle_memberships.circle_id").
 		Where("circle_memberships.user_id = ? AND savings_circles.status = ?", payload.UserID, "completed").
-		Count((*int64)(&stats.CompletedSavings))
+		Count(&stats.CompletedSavings)
 
 	// Gig completion
 	h.db.Table("contracts").Where("freelancer_id = ? AND status = ?", payload.UserID, "completed").
-		Count((*int64)(&stats.CompletedGigs))
+		Count(&stats.CompletedGigs)
 
 	// Calculate score components
 	paymentHistory := calculatePaymentHistoryScore(stats.TotalLoans, stats.RepaidOnTime, stats.DefaultedLoans)
-	savingsHistory := calculateSavingsScore(stats.CompletedSavings)
-	gigPerformance := calculateGigScore(stats.CompletedGigs)
+	savingsHistory := calculateSavingsScore(int(stats.CompletedSavings))
+	gigPerformance := calculateGigScore(int(stats.CompletedGigs))
 	// ... more components
 
 	totalScore := (paymentHistory*35 + savingsHistory*25 + gigPerformance*20) / 100 // weighted

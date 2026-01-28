@@ -2,9 +2,16 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"hustlex/internal/domain/shared/valueobject"
 	"hustlex/internal/domain/wallet/aggregate"
+)
+
+// Repository errors
+var (
+	ErrWalletNotFound         = errors.New("wallet not found")
+	ErrConcurrentModification = errors.New("concurrent modification detected")
 )
 
 // WalletRepository defines the interface for wallet persistence

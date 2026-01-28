@@ -1,9 +1,11 @@
+// +build ignore
+
 package handlers
 
 import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
-	"github.com/hustlex/backend/internal/services"
+	"hustlex/internal/services"
 )
 
 // Package-level validator instance

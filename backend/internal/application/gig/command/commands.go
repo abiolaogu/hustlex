@@ -180,7 +180,7 @@ func (c CreateGig) GetClientID() (valueobject.UserID, error) {
 func (c CreateGig) GetBudget() (valueobject.Money, valueobject.Money, error) {
 	currency := valueobject.Currency(c.Currency)
 	if c.Currency == "" {
-		currency = valueobject.CurrencyNGN
+		currency = valueobject.NGN
 	}
 
 	min, err := valueobject.NewMoney(c.BudgetMin, currency)
@@ -218,7 +218,7 @@ func (c SubmitProposal) GetHustlerID() (valueobject.UserID, error) {
 func (c SubmitProposal) GetProposedPrice() (valueobject.Money, error) {
 	currency := valueobject.Currency(c.Currency)
 	if c.Currency == "" {
-		currency = valueobject.CurrencyNGN
+		currency = valueobject.NGN
 	}
 	return valueobject.NewMoney(c.ProposedPrice, currency)
 }

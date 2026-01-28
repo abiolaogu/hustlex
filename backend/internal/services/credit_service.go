@@ -84,17 +84,15 @@ func (s *CreditService) GetCreditScore(ctx context.Context, userID uuid.UUID) (*
 				UserID:              userID,
 				Score:               0,
 				GigCompletionScore:  0,
-				GigRatingScore:      0,
-				AjoRecordScore:      0,
+				RatingScore:         0,
+				SavingsScore:        0,
 				AccountAgeScore:     0,
 				VerificationScore:   0,
 				CommunityScore:      0,
 				TotalGigsCompleted:  0,
-				TotalGigsCancelled:  0,
-				TotalAjoCompleted:   0,
-				TotalAjoDefaulted:   0,
-				TotalLoansTaken:     0,
-				TotalLoansRepaid:    0,
+				TotalGigsAccepted:   0,
+				OnTimeContributions: 0,
+				TotalContributions:  0,
 			}
 			if err := s.db.WithContext(ctx).Create(&score).Error; err != nil {
 				return nil, err
@@ -147,36 +145,36 @@ func (s *CreditService) RecalculateCreditScore(ctx context.Context, userID uuid.
 	}
 
 	// Get activity stats
-	var gigsCompleted, gigsCancelled int64
+	var gigsCompleted, gigsAccepted int64
 	s.db.WithContext(ctx).Model(&models.GigContract{}).
-		Where("hustler_id = ? AND status = ?", userID, models.ContractCompleted).
+		Where("hustler_id = ? AND status = ?", userID, models.ContractStatusCompleted).
 		Count(&gigsCompleted)
 	s.db.WithContext(ctx).Model(&models.GigContract{}).
-		Where("hustler_id = ? AND status = ?", userID, models.ContractCancelled).
-		Count(&gigsCancelled)
+		Where("hustler_id = ?", userID).
+		Count(&gigsAccepted)
 
-	var ajoCompleted, ajoDefaulted int64
+	var onTimeContributions, totalContributions int64
 	s.db.WithContext(ctx).Model(&models.Contribution{}).
 		Joins("JOIN circle_members ON contributions.member_id = circle_members.id").
 		Where("circle_members.user_id = ? AND contributions.status = ?", userID, "paid").
-		Count(&ajoCompleted)
+		Count(&onTimeContributions)
 	s.db.WithContext(ctx).Model(&models.Contribution{}).
 		Joins("JOIN circle_members ON contributions.member_id = circle_members.id").
-		Where("circle_members.user_id = ? AND contributions.status = ?", userID, "overdue").
-		Count(&ajoDefaulted)
+		Where("circle_members.user_id = ?", userID).
+		Count(&totalContributions)
 
 	// Update score record
 	score.Score = totalScore
 	score.GigCompletionScore = gigCompletionScore
-	score.GigRatingScore = gigRatingScore
-	score.AjoRecordScore = ajoRecordScore
+	score.RatingScore = gigRatingScore
+	score.SavingsScore = ajoRecordScore
 	score.AccountAgeScore = accountAgeScore
 	score.VerificationScore = verificationScore
 	score.CommunityScore = communityScore
 	score.TotalGigsCompleted = int(gigsCompleted)
-	score.TotalGigsCancelled = int(gigsCancelled)
-	score.TotalAjoCompleted = int(ajoCompleted)
-	score.TotalAjoDefaulted = int(ajoDefaulted)
+	score.TotalGigsAccepted = int(gigsAccepted)
+	score.OnTimeContributions = int(onTimeContributions)
+	score.TotalContributions = int(totalContributions)
 	score.LastCalculatedAt = time.Now().UTC()
 
 	if err := s.db.WithContext(ctx).Save(score).Error; err != nil {
@@ -193,17 +191,16 @@ func (s *CreditService) RecalculateCreditScore(ctx context.Context, userID uuid.
 
 // calculateGigCompletionScore scores based on gig completion rate
 func (s *CreditService) calculateGigCompletionScore(ctx context.Context, userID uuid.UUID) int {
-	var completed, cancelled int64
+	var completed, total int64
 
 	// As hustler
 	s.db.WithContext(ctx).Model(&models.GigContract{}).
-		Where("hustler_id = ? AND status = ?", userID, models.ContractCompleted).
+		Where("hustler_id = ? AND status = ?", userID, models.ContractStatusCompleted).
 		Count(&completed)
 	s.db.WithContext(ctx).Model(&models.GigContract{}).
-		Where("hustler_id = ? AND status = ?", userID, models.ContractCancelled).
-		Count(&cancelled)
+		Where("hustler_id = ?", userID).
+		Count(&total)
 
-	total := completed + cancelled
 	if total == 0 {
 		return 0
 	}
@@ -333,24 +330,17 @@ func (s *CreditService) calculateVerificationScore(ctx context.Context, userID u
 
 	score := 0
 
-	// Phone verified (required for registration) - 200 points
-	if user.PhoneVerified {
-		score += 200
-	}
+	// Phone is verified by registration process - base 200 points
+	score += 200
 
-	// Email verified - 150 points
-	if user.EmailVerified {
+	// Email provided - 150 points
+	if user.Email != "" {
 		score += 150
 	}
 
-	// BVN verified - 300 points
-	if user.BVNVerified {
-		score += 300
-	}
-
-	// NIN verified - 200 points
-	if user.NINVerified {
-		score += 200
+	// User is verified (admin verified) - 500 points
+	if user.IsVerified {
+		score += 500
 	}
 
 	return score
@@ -501,22 +491,27 @@ func (s *CreditService) RequestLoan(ctx context.Context, input RequestLoanInput)
 	// Calculate interest (simple interest)
 	monthlyInterestRate := eligibility.InterestRate / 100
 	durationMonths := float64(input.DurationDays) / 30
-	interestKobo := int64(float64(input.AmountKobo) * monthlyInterestRate * durationMonths)
-	totalRepayment := input.AmountKobo + interestKobo
+	tenureMonths := int(durationMonths)
+	if tenureMonths < 1 {
+		tenureMonths = 1
+	}
+	interestAmount := int64(float64(input.AmountKobo) * monthlyInterestRate * durationMonths)
+	totalAmount := input.AmountKobo + interestAmount
 
 	dueDate := time.Now().UTC().AddDate(0, 0, input.DurationDays)
 
 	loan := &models.Loan{
-		BorrowerID:       input.UserID,
-		PrincipalKobo:    input.AmountKobo,
-		InterestRatePercent: eligibility.InterestRate,
-		InterestKobo:     interestKobo,
-		TotalRepaymentKobo: totalRepayment,
-		OutstandingKobo:  totalRepayment,
-		DurationDays:     input.DurationDays,
-		DueDate:          dueDate,
-		Status:           "pending",
-		Purpose:          input.Purpose,
+		UserID:         input.UserID,
+		Amount:         input.AmountKobo,
+		InterestRate:   eligibility.InterestRate / 100, // Store as decimal (e.g., 0.05 for 5%)
+		InterestAmount: interestAmount,
+		TotalAmount:    totalAmount,
+		AmountRepaid:   0,
+		Currency:       "NGN",
+		TenureMonths:   tenureMonths,
+		DueDate:        &dueDate,
+		Status:         "pending",
+		Purpose:        input.Purpose,
 	}
 
 	if err := s.db.WithContext(ctx).Create(loan).Error; err != nil {
@@ -547,8 +542,8 @@ func (s *CreditService) ApproveLoan(ctx context.Context, loanID uuid.UUID, walle
 
 	// Disburse to wallet
 	_, err := walletService.Deposit(ctx, DepositInput{
-		UserID:     loan.BorrowerID,
-		AmountKobo: loan.PrincipalKobo,
+		UserID:     loan.UserID,
+		AmountKobo: loan.Amount,
 		Reference:  "LOAN-" + loan.ID.String()[:8],
 		Channel:    "loan_disbursement",
 	})
@@ -561,10 +556,10 @@ func (s *CreditService) ApproveLoan(ctx context.Context, loanID uuid.UUID, walle
 		return nil, err
 	}
 
-	// Update credit score stats
+	// Update credit score stats (loan approved)
 	s.db.WithContext(ctx).Model(&models.CreditScore{}).
-		Where("user_id = ?", loan.BorrowerID).
-		Update("total_loans_taken", gorm.Expr("total_loans_taken + 1"))
+		Where("user_id = ?", loan.UserID).
+		Update("total_gigs_accepted", gorm.Expr("total_gigs_accepted + 1"))
 
 	return &loan, nil
 }
@@ -580,16 +575,17 @@ func (s *CreditService) RepayLoan(ctx context.Context, loanID uuid.UUID, amountK
 		return nil, ErrLoanNotFound
 	}
 
-	if loan.Status == "repaid" {
+	if loan.Status == "completed" {
 		return nil, ErrLoanAlreadyRepaid
 	}
 
-	if amountKobo > loan.OutstandingKobo {
-		amountKobo = loan.OutstandingKobo
+	outstandingAmount := loan.TotalAmount - loan.AmountRepaid
+	if amountKobo > outstandingAmount {
+		amountKobo = outstandingAmount
 	}
 
 	// Get user wallet and verify they have sufficient balance
-	wallet, err := walletService.GetWallet(ctx, loan.BorrowerID)
+	wallet, err := walletService.GetWallet(ctx, loan.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -603,26 +599,25 @@ func (s *CreditService) RepayLoan(ctx context.Context, loanID uuid.UUID, amountK
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Create repayment record
 		repayment = &models.LoanRepayment{
-			LoanID:     loan.ID,
-			AmountKobo: amountKobo,
-			Status:     "completed",
+			LoanID: loan.ID,
+			Amount: amountKobo,
 		}
 
 		if err := tx.Create(repayment).Error; err != nil {
 			return err
 		}
 
-		// Update loan outstanding
-		loan.OutstandingKobo -= amountKobo
-		if loan.OutstandingKobo <= 0 {
-			loan.OutstandingKobo = 0
-			loan.Status = "repaid"
-			loan.RepaidAt = timePtr(time.Now().UTC())
+		// Update loan amount repaid
+		loan.AmountRepaid += amountKobo
+		if loan.AmountRepaid >= loan.TotalAmount {
+			loan.AmountRepaid = loan.TotalAmount
+			loan.Status = "completed"
+			loan.CompletedAt = timePtr(time.Now().UTC())
 
 			// Update credit score stats
 			tx.Model(&models.CreditScore{}).
-				Where("user_id = ?", loan.BorrowerID).
-				Update("total_loans_repaid", gorm.Expr("total_loans_repaid + 1"))
+				Where("user_id = ?", loan.UserID).
+				Update("total_gigs_completed", gorm.Expr("total_gigs_completed + 1"))
 		}
 
 		return tx.Save(&loan).Error
@@ -634,7 +629,7 @@ func (s *CreditService) RepayLoan(ctx context.Context, loanID uuid.UUID, amountK
 
 	// Deduct from wallet
 	_, err = walletService.Withdraw(ctx, WithdrawalInput{
-		UserID:        loan.BorrowerID,
+		UserID:        loan.UserID,
 		AmountKobo:    amountKobo,
 		PIN:           pin,
 		BankCode:      "INTERNAL",
@@ -649,7 +644,7 @@ func (s *CreditService) RepayLoan(ctx context.Context, loanID uuid.UUID, amountK
 	}
 
 	// Recalculate credit score
-	go s.RecalculateCreditScore(context.Background(), loan.BorrowerID)
+	go s.RecalculateCreditScore(context.Background(), loan.UserID)
 
 	return repayment, nil
 }
@@ -658,7 +653,7 @@ func (s *CreditService) RepayLoan(ctx context.Context, loanID uuid.UUID, amountK
 func (s *CreditService) GetUserLoans(ctx context.Context, userID uuid.UUID) ([]models.Loan, error) {
 	var loans []models.Loan
 	err := s.db.WithContext(ctx).
-		Where("borrower_id = ?", userID).
+		Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&loans).Error
 
@@ -691,34 +686,33 @@ func (s *CreditService) GetCreditHistory(ctx context.Context, userID uuid.UUID) 
 	}
 
 	// Get loan history summary
-	var totalLoans, repaidLoans, defaultedLoans int64
-	s.db.WithContext(ctx).Model(&models.Loan{}).Where("borrower_id = ?", userID).Count(&totalLoans)
-	s.db.WithContext(ctx).Model(&models.Loan{}).Where("borrower_id = ? AND status = ?", userID, "repaid").Count(&repaidLoans)
-	s.db.WithContext(ctx).Model(&models.Loan{}).Where("borrower_id = ? AND status = ?", userID, "defaulted").Count(&defaultedLoans)
+	var totalLoans, completedLoans, defaultedLoans int64
+	s.db.WithContext(ctx).Model(&models.Loan{}).Where("user_id = ?", userID).Count(&totalLoans)
+	s.db.WithContext(ctx).Model(&models.Loan{}).Where("user_id = ? AND status = ?", userID, "completed").Count(&completedLoans)
+	s.db.WithContext(ctx).Model(&models.Loan{}).Where("user_id = ? AND status = ?", userID, "defaulted").Count(&defaultedLoans)
 
 	return &CreditHistory{
 		CurrentScore:       score.Score,
 		ComponentScores: map[string]int{
 			"gig_completion":    score.GigCompletionScore,
-			"gig_ratings":       score.GigRatingScore,
-			"ajo_record":        score.AjoRecordScore,
+			"rating":            score.RatingScore,
+			"savings":           score.SavingsScore,
 			"account_age":       score.AccountAgeScore,
 			"verification":      score.VerificationScore,
 			"community":         score.CommunityScore,
 		},
 		Stats: map[string]int{
-			"gigs_completed":    score.TotalGigsCompleted,
-			"gigs_cancelled":    score.TotalGigsCancelled,
-			"ajo_completed":     score.TotalAjoCompleted,
-			"ajo_defaulted":     score.TotalAjoDefaulted,
-			"loans_taken":       score.TotalLoansTaken,
-			"loans_repaid":      score.TotalLoansRepaid,
+			"gigs_completed":      score.TotalGigsCompleted,
+			"gigs_accepted":       score.TotalGigsAccepted,
+			"on_time_contributions": score.OnTimeContributions,
+			"total_contributions":   score.TotalContributions,
+			"total_reviews":         score.TotalReviews,
 		},
 		LoanSummary: LoanSummary{
 			TotalLoans:    int(totalLoans),
-			RepaidLoans:   int(repaidLoans),
+			RepaidLoans:   int(completedLoans),
 			DefaultedLoans: int(defaultedLoans),
-			ActiveLoans:   int(totalLoans - repaidLoans - defaultedLoans),
+			ActiveLoans:   int(totalLoans - completedLoans - defaultedLoans),
 		},
 		LastCalculatedAt: score.LastCalculatedAt,
 	}, nil

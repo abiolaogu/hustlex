@@ -171,15 +171,16 @@ func (s *WalletService) Deposit(ctx context.Context, input DepositInput) (*model
 
 		// Create transaction record
 		transaction = &models.Transaction{
-			WalletID:        wallet.ID,
-			Type:            models.TransactionDeposit,
-			AmountKobo:      input.AmountKobo,
-			FeeKobo:         0,
-			BalanceAfterKobo: wallet.Balance,
-			Status:          models.TransactionCompleted,
-			Reference:       input.Reference,
-			Description:     fmt.Sprintf("Deposit via %s", input.Channel),
-			PaymentChannel:  input.Channel,
+			WalletID:      wallet.ID,
+			Type:          models.TransactionTypeDeposit,
+			Amount:        input.AmountKobo,
+			Fee:           0,
+			NetAmount:     input.AmountKobo,
+			BalanceBefore: wallet.Balance - input.AmountKobo,
+			BalanceAfter:  wallet.Balance,
+			Status:        models.TransactionStatusCompleted,
+			Reference:     input.Reference,
+			Description:   fmt.Sprintf("Deposit via %s", input.Channel),
 		}
 
 		return tx.Create(transaction).Error
@@ -236,13 +237,13 @@ func (s *WalletService) Withdraw(ctx context.Context, input WithdrawalInput) (*m
 		}
 
 		// Verify PIN
-		if wallet.TransactionPIN == "" {
+		if wallet.Pin == "" {
 			return ErrPINNotSet
 		}
-		if err := verifyPIN(input.PIN, wallet.TransactionPIN); err != nil {
+		if err := verifyPIN(input.PIN, wallet.Pin); err != nil {
 			// Increment failed attempts
-			wallet.PINAttempts++
-			if wallet.PINAttempts >= 5 {
+			wallet.PinAttempts++
+			if wallet.PinAttempts >= 5 {
 				wallet.IsLocked = true
 			}
 			tx.Save(&wallet)
@@ -250,7 +251,7 @@ func (s *WalletService) Withdraw(ctx context.Context, input WithdrawalInput) (*m
 		}
 
 		// Reset PIN attempts on success
-		wallet.PINAttempts = 0
+		wallet.PinAttempts = 0
 
 		// Check daily limit
 		dailyTotal, err := s.getDailyWithdrawalTotal(ctx, tx, wallet.ID)
@@ -277,17 +278,16 @@ func (s *WalletService) Withdraw(ctx context.Context, input WithdrawalInput) (*m
 
 		// Create transaction record (pending until bank transfer completes)
 		transaction = &models.Transaction{
-			WalletID:        wallet.ID,
-			Type:            models.TransactionWithdrawal,
-			AmountKobo:      input.AmountKobo,
-			FeeKobo:         WithdrawalFeeKobo,
-			BalanceAfterKobo: wallet.Balance,
-			Status:          models.TransactionPending,
-			Reference:       ref,
-			Description:     fmt.Sprintf("Withdrawal to %s - %s", input.BankCode, maskAccountNumber(input.AccountNumber)),
-			BankCode:        input.BankCode,
-			AccountNumber:   input.AccountNumber,
-			AccountName:     input.AccountName,
+			WalletID:      wallet.ID,
+			Type:          models.TransactionTypeWithdrawal,
+			Amount:        input.AmountKobo,
+			Fee:           WithdrawalFeeKobo,
+			NetAmount:     input.AmountKobo - WithdrawalFeeKobo,
+			BalanceBefore: wallet.Balance + totalAmount,
+			BalanceAfter:  wallet.Balance,
+			Status:        models.TransactionStatusPending,
+			Reference:     ref,
+			Description:   fmt.Sprintf("Withdrawal to %s - %s", input.BankCode, maskAccountNumber(input.AccountNumber)),
 		}
 
 		return tx.Create(transaction).Error
@@ -345,18 +345,18 @@ func (s *WalletService) Transfer(ctx context.Context, input TransferInput) (*mod
 		}
 
 		// Verify PIN
-		if senderWallet.TransactionPIN == "" {
+		if senderWallet.Pin == "" {
 			return ErrPINNotSet
 		}
-		if err := verifyPIN(input.PIN, senderWallet.TransactionPIN); err != nil {
-			senderWallet.PINAttempts++
-			if senderWallet.PINAttempts >= 5 {
+		if err := verifyPIN(input.PIN, senderWallet.Pin); err != nil {
+			senderWallet.PinAttempts++
+			if senderWallet.PinAttempts >= 5 {
 				senderWallet.IsLocked = true
 			}
 			tx.Save(&senderWallet)
 			return ErrInvalidPIN
 		}
-		senderWallet.PINAttempts = 0
+		senderWallet.PinAttempts = 0
 
 		// Check daily limit
 		dailyTotal, err := s.getDailyTransferTotal(ctx, tx, senderWallet.ID)
@@ -408,23 +408,25 @@ func (s *WalletService) Transfer(ctx context.Context, input TransferInput) (*mod
 
 		// Get receiver info
 		var receiver models.User
-		tx.Select("first_name", "last_name", "phone_number").Where("id = ?", input.ToUserID).First(&receiver)
+		tx.Select("full_name", "phone").Where("id = ?", input.ToUserID).First(&receiver)
 
 		// Create sender transaction
 		description := input.Description
 		if description == "" {
-			description = fmt.Sprintf("Transfer to %s %s", receiver.FirstName, receiver.LastName)
+			description = fmt.Sprintf("Transfer to %s", receiver.FullName)
 		}
 		senderTx = &models.Transaction{
-			WalletID:         senderWallet.ID,
-			Type:             models.TransactionTransfer,
-			AmountKobo:       input.AmountKobo,
-			FeeKobo:          TransferFeeKobo,
-			BalanceAfterKobo: senderWallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        ref,
-			Description:      description,
-			CounterpartyID:   &input.ToUserID,
+			WalletID:       senderWallet.ID,
+			Type:           models.TransactionTypeTransferOut,
+			Amount:         input.AmountKobo,
+			Fee:            TransferFeeKobo,
+			NetAmount:      input.AmountKobo,
+			BalanceBefore:  senderWallet.Balance + totalDebit,
+			BalanceAfter:   senderWallet.Balance,
+			Status:         models.TransactionStatusCompleted,
+			Reference:      ref,
+			Description:    description,
+			CounterpartyID: &input.ToUserID,
 		}
 		if err := tx.Create(senderTx).Error; err != nil {
 			return err
@@ -432,19 +434,21 @@ func (s *WalletService) Transfer(ctx context.Context, input TransferInput) (*mod
 
 		// Get sender info
 		var sender models.User
-		tx.Select("first_name", "last_name", "phone_number").Where("id = ?", input.FromUserID).First(&sender)
+		tx.Select("full_name", "phone").Where("id = ?", input.FromUserID).First(&sender)
 
 		// Create receiver transaction
 		receiverTx = &models.Transaction{
-			WalletID:         receiverWallet.ID,
-			Type:             models.TransactionReceived,
-			AmountKobo:       input.AmountKobo,
-			FeeKobo:          0,
-			BalanceAfterKobo: receiverWallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        ref,
-			Description:      fmt.Sprintf("Received from %s %s", sender.FirstName, sender.LastName),
-			CounterpartyID:   &input.FromUserID,
+			WalletID:       receiverWallet.ID,
+			Type:           models.TransactionTypeTransferIn,
+			Amount:         input.AmountKobo,
+			Fee:            0,
+			NetAmount:      input.AmountKobo,
+			BalanceBefore:  receiverWallet.Balance - input.AmountKobo,
+			BalanceAfter:   receiverWallet.Balance,
+			Status:         models.TransactionStatusCompleted,
+			Reference:      ref,
+			Description:    fmt.Sprintf("Received from %s", sender.FullName),
+			CounterpartyID: &input.FromUserID,
 		}
 		return tx.Create(receiverTx).Error
 	})
@@ -491,14 +495,16 @@ func (s *WalletService) HoldEscrow(ctx context.Context, userID uuid.UUID, amount
 
 		// Record transaction
 		transaction = &models.Transaction{
-			WalletID:         wallet.ID,
-			Type:             models.TransactionEscrowHold,
-			AmountKobo:       amountKobo,
-			FeeKobo:          0,
-			BalanceAfterKobo: wallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        reference,
-			Description:      description,
+			WalletID:      wallet.ID,
+			Type:          models.TransactionTypeGigPayment,
+			Amount:        amountKobo,
+			Fee:           0,
+			NetAmount:     amountKobo,
+			BalanceBefore: wallet.Balance + amountKobo,
+			BalanceAfter:  wallet.Balance,
+			Status:        models.TransactionStatusCompleted,
+			Reference:     reference,
+			Description:   description,
 		}
 
 		return tx.Create(transaction).Error
@@ -568,15 +574,17 @@ func (s *WalletService) ReleaseEscrow(ctx context.Context, fromUserID, toUserID 
 
 		// Record payer escrow release
 		payerTx := &models.Transaction{
-			WalletID:         payerWallet.ID,
-			Type:             models.TransactionEscrowRelease,
-			AmountKobo:       amountKobo,
-			FeeKobo:          0,
-			BalanceAfterKobo: payerWallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        reference,
-			Description:      description,
-			CounterpartyID:   &toUserID,
+			WalletID:       payerWallet.ID,
+			Type:           models.TransactionTypeGigPayment,
+			Amount:         amountKobo,
+			Fee:            0,
+			NetAmount:      amountKobo,
+			BalanceBefore:  payerWallet.EscrowBalance + amountKobo,
+			BalanceAfter:   payerWallet.Balance,
+			Status:         models.TransactionStatusCompleted,
+			Reference:      reference,
+			Description:    description,
+			CounterpartyID: &toUserID,
 		}
 		if err := tx.Create(payerTx).Error; err != nil {
 			return err
@@ -584,15 +592,17 @@ func (s *WalletService) ReleaseEscrow(ctx context.Context, fromUserID, toUserID 
 
 		// Record recipient payment
 		recipientTx = &models.Transaction{
-			WalletID:         recipientWallet.ID,
-			Type:             models.TransactionGigPayment,
-			AmountKobo:       recipientAmount,
-			FeeKobo:          platformFeeKobo,
-			BalanceAfterKobo: recipientWallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        reference,
-			Description:      description,
-			CounterpartyID:   &fromUserID,
+			WalletID:       recipientWallet.ID,
+			Type:           models.TransactionTypeGigEarning,
+			Amount:         recipientAmount,
+			Fee:            platformFeeKobo,
+			NetAmount:      recipientAmount,
+			BalanceBefore:  recipientWallet.Balance - recipientAmount,
+			BalanceAfter:   recipientWallet.Balance,
+			Status:         models.TransactionStatusCompleted,
+			Reference:      reference,
+			Description:    description,
+			CounterpartyID: &fromUserID,
 		}
 		return tx.Create(recipientTx).Error
 	})
@@ -634,14 +644,16 @@ func (s *WalletService) RefundEscrow(ctx context.Context, userID uuid.UUID, amou
 		}
 
 		transaction = &models.Transaction{
-			WalletID:         wallet.ID,
-			Type:             models.TransactionRefund,
-			AmountKobo:       amountKobo,
-			FeeKobo:          0,
-			BalanceAfterKobo: wallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        reference,
-			Description:      description,
+			WalletID:      wallet.ID,
+			Type:          models.TransactionTypeRefund,
+			Amount:        amountKobo,
+			Fee:           0,
+			NetAmount:     amountKobo,
+			BalanceBefore: wallet.Balance - amountKobo,
+			BalanceAfter:  wallet.Balance,
+			Status:        models.TransactionStatusCompleted,
+			Reference:     reference,
+			Description:   description,
 		}
 
 		return tx.Create(transaction).Error
@@ -690,15 +702,16 @@ func (s *WalletService) MoveToSavings(ctx context.Context, userID uuid.UUID, amo
 		ref := generateReference("SAV")
 
 		transaction = &models.Transaction{
-			WalletID:         wallet.ID,
-			Type:             models.TransactionSavingsDeposit,
-			AmountKobo:       amountKobo,
-			FeeKobo:          0,
-			BalanceAfterKobo: wallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        ref,
-			Description:      description,
-			CircleID:         circleID,
+			WalletID:      wallet.ID,
+			Type:          models.TransactionTypeContribution,
+			Amount:        amountKobo,
+			Fee:           0,
+			NetAmount:     amountKobo,
+			BalanceBefore: wallet.Balance + amountKobo,
+			BalanceAfter:  wallet.Balance,
+			Status:        models.TransactionStatusCompleted,
+			Reference:     ref,
+			Description:   description,
 		}
 
 		return tx.Create(transaction).Error
@@ -733,18 +746,18 @@ func (s *WalletService) WithdrawFromSavings(ctx context.Context, userID uuid.UUI
 		}
 
 		// Verify PIN
-		if wallet.TransactionPIN == "" {
+		if wallet.Pin == "" {
 			return ErrPINNotSet
 		}
-		if err := verifyPIN(pin, wallet.TransactionPIN); err != nil {
-			wallet.PINAttempts++
-			if wallet.PINAttempts >= 5 {
+		if err := verifyPIN(pin, wallet.Pin); err != nil {
+			wallet.PinAttempts++
+			if wallet.PinAttempts >= 5 {
 				wallet.IsLocked = true
 			}
 			tx.Save(&wallet)
 			return ErrInvalidPIN
 		}
-		wallet.PINAttempts = 0
+		wallet.PinAttempts = 0
 
 		if wallet.SavingsBalance < amountKobo {
 			return fmt.Errorf("insufficient savings balance")
@@ -761,14 +774,16 @@ func (s *WalletService) WithdrawFromSavings(ctx context.Context, userID uuid.UUI
 		ref := generateReference("SWD")
 
 		transaction = &models.Transaction{
-			WalletID:         wallet.ID,
-			Type:             models.TransactionSavingsWithdrawal,
-			AmountKobo:       amountKobo,
-			FeeKobo:          0,
-			BalanceAfterKobo: wallet.Balance,
-			Status:           models.TransactionCompleted,
-			Reference:        ref,
-			Description:      description,
+			WalletID:      wallet.ID,
+			Type:          models.TransactionTypePayout,
+			Amount:        amountKobo,
+			Fee:           0,
+			NetAmount:     amountKobo,
+			BalanceBefore: wallet.Balance - amountKobo,
+			BalanceAfter:  wallet.Balance,
+			Status:        models.TransactionStatusCompleted,
+			Reference:     ref,
+			Description:   description,
 		}
 
 		return tx.Create(transaction).Error
@@ -872,20 +887,20 @@ func (s *WalletService) GetWalletSummary(ctx context.Context, userID uuid.UUID) 
 
 	var monthlyInflow, monthlyOutflow int64
 
-	// Calculate inflow (deposits + received + gig payments)
+	// Calculate inflow (deposits + received + gig earnings)
 	s.db.WithContext(ctx).Model(&models.Transaction{}).
 		Where("wallet_id = ? AND created_at >= ? AND status = ? AND type IN ?",
-			wallet.ID, startOfMonth, models.TransactionCompleted,
-			[]models.TransactionType{models.TransactionDeposit, models.TransactionReceived, models.TransactionGigPayment}).
-		Select("COALESCE(SUM(amount_kobo), 0)").
+			wallet.ID, startOfMonth, models.TransactionStatusCompleted,
+			[]models.TransactionType{models.TransactionTypeDeposit, models.TransactionTypeTransferIn, models.TransactionTypeGigEarning}).
+		Select("COALESCE(SUM(amount), 0)").
 		Scan(&monthlyInflow)
 
-	// Calculate outflow (withdrawals + transfers + escrow holds)
+	// Calculate outflow (withdrawals + transfers + gig payments)
 	s.db.WithContext(ctx).Model(&models.Transaction{}).
 		Where("wallet_id = ? AND created_at >= ? AND status = ? AND type IN ?",
-			wallet.ID, startOfMonth, models.TransactionCompleted,
-			[]models.TransactionType{models.TransactionWithdrawal, models.TransactionTransfer, models.TransactionEscrowHold}).
-		Select("COALESCE(SUM(amount_kobo + fee_kobo), 0)").
+			wallet.ID, startOfMonth, models.TransactionStatusCompleted,
+			[]models.TransactionType{models.TransactionTypeWithdrawal, models.TransactionTypeTransferOut, models.TransactionTypeGigPayment}).
+		Select("COALESCE(SUM(amount + fee), 0)").
 		Scan(&monthlyOutflow)
 
 	return &WalletSummary{
@@ -922,8 +937,8 @@ func (s *WalletService) getDailyWithdrawalTotal(ctx context.Context, tx *gorm.DB
 	var total int64
 	err := tx.Model(&models.Transaction{}).
 		Where("wallet_id = ? AND type = ? AND created_at >= ? AND status != ?",
-			walletID, models.TransactionWithdrawal, startOfDay, models.TransactionFailed).
-		Select("COALESCE(SUM(amount_kobo), 0)").
+			walletID, models.TransactionTypeWithdrawal, startOfDay, models.TransactionStatusFailed).
+		Select("COALESCE(SUM(amount), 0)").
 		Scan(&total).Error
 
 	return total, err
@@ -935,8 +950,8 @@ func (s *WalletService) getDailyTransferTotal(ctx context.Context, tx *gorm.DB, 
 	var total int64
 	err := tx.Model(&models.Transaction{}).
 		Where("wallet_id = ? AND type = ? AND created_at >= ? AND status != ?",
-			walletID, models.TransactionTransfer, startOfDay, models.TransactionFailed).
-		Select("COALESCE(SUM(amount_kobo), 0)").
+			walletID, models.TransactionTypeTransferOut, startOfDay, models.TransactionStatusFailed).
+		Select("COALESCE(SUM(amount), 0)").
 		Scan(&total).Error
 
 	return total, err

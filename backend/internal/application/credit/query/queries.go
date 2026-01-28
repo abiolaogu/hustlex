@@ -271,7 +271,7 @@ func (h *CreditQueryHandler) HandleGetPlatformLoanStats(ctx context.Context, q G
 }
 
 // HandleGetOverdueLoans retrieves overdue loans
-func (h *CreditQueryHandler) HandleGetOverdueLoans(ctx context.Context, q GetOverdueLoans) ([]repository.LoanDTO, error) {
+func (h *CreditQueryHandler) HandleGetOverdueLoans(ctx context.Context, q GetOverdueLoans) ([]*repository.LoanDTO, error) {
 	return h.loanRepo.FindOverdue(ctx)
 }
 

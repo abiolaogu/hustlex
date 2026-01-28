@@ -125,8 +125,8 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd command.Transfer) (*co
 		reference = generateReference("TRF")
 	}
 
-	// Calculate fee
-	fee := valueobject.MustNewMoney(TransferFee, amount.Currency())
+	// Calculate fee (for future use)
+	_ = valueobject.MustNewMoney(TransferFee, amount.Currency())
 
 	// Execute transfer via domain service
 	transferResult, err := h.transferService.Transfer(ctx, service.TransferRequest{

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hustlex/backend/internal/models"
+	"hustlex/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )

@@ -100,7 +100,7 @@ func (c CreateCircle) GetCreatorID() (valueobject.UserID, error) {
 func (c CreateCircle) GetContributionAmount() (valueobject.Money, error) {
 	currency := valueobject.Currency(c.Currency)
 	if c.Currency == "" {
-		currency = valueobject.CurrencyNGN
+		currency = valueobject.NGN
 	}
 	return valueobject.NewMoney(c.ContributionAmt, currency)
 }

@@ -34,7 +34,15 @@ type BaseEvent struct {
 }
 
 // NewBaseEvent creates a new base event
-func NewBaseEvent(eventType, aggregateID, aggregateType string) BaseEvent {
+func NewBaseEvent(eventType string, aggregateIDAndType ...string) BaseEvent {
+	aggregateID := ""
+	aggregateType := ""
+	if len(aggregateIDAndType) >= 1 {
+		aggregateID = aggregateIDAndType[0]
+	}
+	if len(aggregateIDAndType) >= 2 {
+		aggregateType = aggregateIDAndType[1]
+	}
 	return BaseEvent{
 		ID:             uuid.NewString(),
 		Type:           eventType,

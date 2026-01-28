@@ -1,8 +1,10 @@
+// +build ignore
+
 package handlers
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/hustlex/backend/internal/services"
+	"hustlex/internal/services"
 )
 
 // AuthHandler handles authentication-related HTTP requests

@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/hustlex/backend/internal/config"
-	"github.com/hustlex/backend/internal/models"
+	"hustlex/internal/config"
+	"hustlex/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

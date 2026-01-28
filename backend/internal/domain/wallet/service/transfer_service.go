@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"hustlex/internal/domain/shared/valueobject"
-	"hustlex/internal/domain/wallet/aggregate"
 	"hustlex/internal/domain/wallet/repository"
 )
 

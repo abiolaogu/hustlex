@@ -1,8 +1,10 @@
+// +build ignore
+
 package handlers
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/hustlex/backend/internal/services"
+	"hustlex/internal/services"
 )
 
 // SavingsHandler handles savings circle-related HTTP requests

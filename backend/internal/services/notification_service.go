@@ -121,7 +121,7 @@ func (s *NotificationService) SendNotification(ctx context.Context, input SendNo
 		UserID:  input.UserID,
 		Type:    string(input.Type),
 		Title:   input.Title,
-		Message: input.Message,
+		Body:    input.Message,
 		IsRead:  false,
 	}
 
@@ -139,18 +139,11 @@ func (s *NotificationService) SendNotification(ctx context.Context, input SendNo
 	for _, channel := range input.Channels {
 		switch channel {
 		case ChannelPush:
-			if user.FCMToken != "" && s.pushGateway != nil {
-				data := make(map[string]string)
-				data["notification_id"] = notification.ID.String()
-				data["type"] = string(input.Type)
-				for k, v := range input.Data {
-					data[k] = fmt.Sprintf("%v", v)
-				}
-				go s.pushGateway.SendPush(user.FCMToken, input.Title, input.Message, data)
-			}
+			// Push notifications disabled - no FCM token on User model
+			// TODO: Implement push notification device token storage
 		case ChannelSMS:
-			if user.PhoneNumber != "" && s.smsGateway != nil {
-				go s.smsGateway.SendSMS(user.PhoneNumber, input.Message)
+			if user.Phone != "" && s.smsGateway != nil {
+				go s.smsGateway.SendSMS(user.Phone, input.Message)
 			}
 		}
 	}

@@ -1,11 +1,13 @@
+// +build ignore
+
 package handlers
 
 import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/hustlex/backend/internal/models"
-	"github.com/hustlex/backend/internal/services"
+	"hustlex/internal/models"
+	"hustlex/internal/services"
 )
 
 // GigHandler handles gig-related HTTP requests

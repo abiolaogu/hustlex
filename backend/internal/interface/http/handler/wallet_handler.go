@@ -61,7 +61,8 @@ func (h *WalletHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balance, err := h.queryHandler.HandleGetBalance(r.Context(), query.GetBalance{
+	// Use GetWallet as there's no separate balance endpoint
+	wallet, err := h.queryHandler.HandleGetWallet(r.Context(), query.GetWallet{
 		UserID: userID.String(),
 	})
 	if err != nil {
@@ -69,7 +70,13 @@ func (h *WalletHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.Success(w, balance)
+	response.Success(w, map[string]interface{}{
+		"available_balance": wallet.AvailableBalance,
+		"escrow_balance":    wallet.EscrowBalance,
+		"savings_balance":   wallet.SavingsBalance,
+		"total_balance":     wallet.TotalBalance,
+		"currency":          wallet.Currency,
+	})
 }
 
 // GetTransactions handles GET /api/wallet/transactions
@@ -85,10 +92,20 @@ func (h *WalletHandler) GetTransactions(w http.ResponseWriter, r *http.Request) 
 	page := parseIntQuery(q.Get("page"), 1)
 	limit := parseIntQuery(q.Get("limit"), 20)
 
+	// Convert string to pointer if not empty
+	var typeFilter *string
+	var statusFilter *string
+	if t := q.Get("type"); t != "" {
+		typeFilter = &t
+	}
+	if s := q.Get("status"); s != "" {
+		statusFilter = &s
+	}
+
 	result, err := h.queryHandler.HandleGetTransactions(r.Context(), query.GetTransactions{
 		UserID: userID.String(),
-		Type:   q.Get("type"),
-		Status: q.Get("status"),
+		Type:   typeFilter,
+		Status: statusFilter,
 		Page:   page,
 		Limit:  limit,
 	})
@@ -109,10 +126,11 @@ func (h *WalletHandler) InitiateDeposit(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req struct {
-		Amount      int64    `json:"amount"`
-		Currency    string   `json:"currency"`
-		CallbackURL string   `json:"callback_url"`
-		Channels    []string `json:"channels"`
+		Amount      int64  `json:"amount"`
+		Currency    string `json:"currency"`
+		Reference   string `json:"reference"`
+		Description string `json:"description"`
+		Channel     string `json:"channel"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -125,12 +143,28 @@ func (h *WalletHandler) InitiateDeposit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	result, err := h.depositHandler.HandleInitiateDeposit(r.Context(), command.InitiateDeposit{
-		UserID:      userID.String(),
+	if req.Currency == "" {
+		req.Currency = "NGN"
+	}
+
+	// Get wallet first to get wallet ID
+	wallet, err := h.queryHandler.HandleGetWallet(r.Context(), query.GetWallet{
+		UserID: userID.String(),
+	})
+	if err != nil {
+		response.NotFound(w, "wallet not found")
+		return
+	}
+
+	result, err := h.depositHandler.HandleInitiateDeposit(r.Context(), command.Deposit{
+		WalletID:    wallet.WalletID,
 		Amount:      req.Amount,
 		Currency:    req.Currency,
-		CallbackURL: req.CallbackURL,
-		Channels:    req.Channels,
+		Source:      "deposit",
+		Reference:   req.Reference,
+		Description: req.Description,
+		Channel:     req.Channel,
+		RequestedBy: userID.String(),
 	})
 	if err != nil {
 		response.BadRequest(w, err.Error())
@@ -156,9 +190,7 @@ func (h *WalletHandler) VerifyDeposit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.depositHandler.HandleVerifyDeposit(r.Context(), command.VerifyDeposit{
-		Reference: req.Reference,
-	})
+	result, err := h.depositHandler.HandleVerifyDeposit(r.Context(), req.Reference)
 	if err != nil {
 		response.BadRequest(w, err.Error())
 		return
@@ -181,7 +213,7 @@ func (h *WalletHandler) InitiateWithdraw(w http.ResponseWriter, r *http.Request)
 		AccountNumber string `json:"account_number"`
 		BankCode      string `json:"bank_code"`
 		AccountName   string `json:"account_name"`
-		Reason        string `json:"reason"`
+		PIN           string `json:"pin"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -200,20 +232,37 @@ func (h *WalletHandler) InitiateWithdraw(w http.ResponseWriter, r *http.Request)
 	if req.BankCode == "" {
 		errors["bank_code"] = "bank code is required"
 	}
+	if req.PIN == "" {
+		errors["pin"] = "PIN is required"
+	}
 
 	if len(errors) > 0 {
 		response.ValidationError(w, errors)
 		return
 	}
 
-	result, err := h.withdrawHandler.HandleWithdraw(r.Context(), command.Withdraw{
-		UserID:        userID.String(),
+	if req.Currency == "" {
+		req.Currency = "NGN"
+	}
+
+	// Get wallet first to get wallet ID
+	wallet, err := h.queryHandler.HandleGetWallet(r.Context(), query.GetWallet{
+		UserID: userID.String(),
+	})
+	if err != nil {
+		response.NotFound(w, "wallet not found")
+		return
+	}
+
+	result, err := h.withdrawHandler.Handle(r.Context(), command.Withdraw{
+		WalletID:      wallet.WalletID,
 		Amount:        req.Amount,
 		Currency:      req.Currency,
 		AccountNumber: req.AccountNumber,
 		BankCode:      req.BankCode,
 		AccountName:   req.AccountName,
-		Reason:        req.Reason,
+		PIN:           req.PIN,
+		RequestedBy:   userID.String(),
 	})
 	if err != nil {
 		response.BadRequest(w, err.Error())
@@ -232,10 +281,11 @@ func (h *WalletHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		RecipientID string `json:"recipient_id"`
-		Amount      int64  `json:"amount"`
-		Currency    string `json:"currency"`
-		Description string `json:"description"`
+		RecipientPhone string `json:"recipient_phone"`
+		Amount         int64  `json:"amount"`
+		Currency       string `json:"currency"`
+		Description    string `json:"description"`
+		PIN            string `json:"pin"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -248,8 +298,11 @@ func (h *WalletHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	if req.Amount <= 0 {
 		errors["amount"] = "amount must be positive"
 	}
-	if req.RecipientID == "" {
-		errors["recipient_id"] = "recipient ID is required"
+	if req.RecipientPhone == "" {
+		errors["recipient_phone"] = "recipient phone is required"
+	}
+	if req.PIN == "" {
+		errors["pin"] = "PIN is required"
 	}
 
 	if len(errors) > 0 {
@@ -257,12 +310,18 @@ func (h *WalletHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.transferHandler.HandleTransfer(r.Context(), command.Transfer{
+	if req.Currency == "" {
+		req.Currency = "NGN"
+	}
+
+	result, err := h.transferHandler.Handle(r.Context(), command.Transfer{
 		FromUserID:  userID.String(),
-		ToUserID:    req.RecipientID,
+		ToUserPhone: req.RecipientPhone,
 		Amount:      req.Amount,
 		Currency:    req.Currency,
 		Description: req.Description,
+		PIN:         req.PIN,
+		RequestedBy: userID.String(),
 	})
 	if err != nil {
 		response.BadRequest(w, err.Error())
@@ -274,14 +333,8 @@ func (h *WalletHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 // GetBanks handles GET /api/wallet/banks
 func (h *WalletHandler) GetBanks(w http.ResponseWriter, r *http.Request) {
-	country := r.URL.Query().Get("country")
-	if country == "" {
-		country = "nigeria"
-	}
-
-	banks, err := h.queryHandler.HandleGetBanks(r.Context(), query.GetBanks{
-		Country: country,
-	})
+	// Get banks via withdraw handler
+	banks, err := h.withdrawHandler.HandleGetBanks(r.Context())
 	if err != nil {
 		response.InternalError(w)
 		return
@@ -310,16 +363,36 @@ func (h *WalletHandler) ResolveAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	account, err := h.queryHandler.HandleResolveAccount(r.Context(), query.ResolveAccount{
-		AccountNumber: req.AccountNumber,
-		BankCode:      req.BankCode,
-	})
+	accountName, err := h.withdrawHandler.HandleVerifyAccount(r.Context(), req.BankCode, req.AccountNumber)
 	if err != nil {
 		response.BadRequest(w, err.Error())
 		return
 	}
 
-	response.Success(w, account)
+	response.Success(w, map[string]string{
+		"account_name":   accountName,
+		"account_number": req.AccountNumber,
+		"bank_code":      req.BankCode,
+	})
+}
+
+// GetBankAccounts handles GET /api/wallet/bank-accounts
+func (h *WalletHandler) GetBankAccounts(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "unauthorized")
+		return
+	}
+
+	accounts, err := h.queryHandler.HandleGetBankAccounts(r.Context(), query.GetBankAccounts{
+		UserID: userID.String(),
+	})
+	if err != nil {
+		response.InternalError(w)
+		return
+	}
+
+	response.Success(w, accounts)
 }
 
 // parseIntQuery parses an integer from a query string with a default value

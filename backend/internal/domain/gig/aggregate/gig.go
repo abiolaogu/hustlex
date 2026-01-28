@@ -179,7 +179,7 @@ func NewGig(
 		description:  description,
 		category:     category,
 		budget:       budget,
-		currency:     valueobject.CurrencyNGN,
+		currency:     valueobject.NGN,
 		deliveryDays: deliveryDays,
 		isRemote:     isRemote,
 		status:       GigStatusOpen,

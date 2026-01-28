@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
