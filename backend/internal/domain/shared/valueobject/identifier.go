@@ -192,3 +192,91 @@ func NewReference(value string) (Reference, error) {
 func (r Reference) String() string { return r.value }
 func (r Reference) IsEmpty() bool  { return r.value == "" }
 func (r Reference) Equals(other Reference) bool { return r.value == other.value }
+
+// SkillID represents a unique skill identifier
+type SkillID struct {
+	value string
+}
+
+func NewSkillID(id string) (SkillID, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return SkillID{}, ErrInvalidID
+	}
+	return SkillID{value: id}, nil
+}
+
+func GenerateSkillID() SkillID {
+	return SkillID{value: uuid.NewString()}
+}
+
+func MustNewSkillID(id string) SkillID {
+	sid, err := NewSkillID(id)
+	if err != nil {
+		panic(err)
+	}
+	return sid
+}
+
+func (id SkillID) String() string { return id.value }
+func (id SkillID) IsEmpty() bool  { return id.value == "" }
+func (id SkillID) Equals(other SkillID) bool { return id.value == other.value }
+
+// ProposalID represents a unique gig proposal identifier
+type ProposalID struct {
+	value string
+}
+
+func NewProposalID(id string) (ProposalID, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return ProposalID{}, ErrInvalidID
+	}
+	return ProposalID{value: id}, nil
+}
+
+func GenerateProposalID() ProposalID {
+	return ProposalID{value: uuid.NewString()}
+}
+
+func (id ProposalID) String() string { return id.value }
+func (id ProposalID) IsEmpty() bool  { return id.value == "" }
+func (id ProposalID) Equals(other ProposalID) bool { return id.value == other.value }
+
+// MemberID represents a unique circle member identifier
+type MemberID struct {
+	value string
+}
+
+func NewMemberID(id string) (MemberID, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return MemberID{}, ErrInvalidID
+	}
+	return MemberID{value: id}, nil
+}
+
+func GenerateMemberID() MemberID {
+	return MemberID{value: uuid.NewString()}
+}
+
+func (id MemberID) String() string { return id.value }
+func (id MemberID) IsEmpty() bool  { return id.value == "" }
+func (id MemberID) Equals(other MemberID) bool { return id.value == other.value }
+
+// ContributionID represents a unique contribution identifier
+type ContributionID struct {
+	value string
+}
+
+func NewContributionID(id string) (ContributionID, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return ContributionID{}, ErrInvalidID
+	}
+	return ContributionID{value: id}, nil
+}
+
+func GenerateContributionID() ContributionID {
+	return ContributionID{value: uuid.NewString()}
+}
+
+func (id ContributionID) String() string { return id.value }
+func (id ContributionID) IsEmpty() bool  { return id.value == "" }
+func (id ContributionID) Equals(other ContributionID) bool { return id.value == other.value }
