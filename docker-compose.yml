@@ -1,4 +1,4 @@
-version: '3.8'
+# HustleX Pro Docker Compose
 
 services:
   # =============================================================================
@@ -27,7 +27,7 @@ services:
 
   # YugabyteDB - Distributed SQL database for global scale
   yugabytedb:
-    image: yugabytedb/yugabyte:2.20.0.0-b76
+    image: yugabytedb/yugabyte:2024.1.3.0-b105
     container_name: hustlex-yugabytedb
     command: >
       bash -c "
@@ -119,14 +119,22 @@ services:
       dockerfile: Dockerfile
     container_name: hustlex-api
     environment:
-      - ENV=development
-      - DATABASE_URL=postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex?sslmode=disable
-      - YUGABYTE_URL=postgres://hustlex:hustlex_yb_password@yugabytedb:5433/hustlex_distributed?sslmode=disable
-      - REDIS_URL=redis://:hustlex_redis_password@dragonfly:6379/0
+      - ENVIRONMENT=development
+      - SERVER_PORT=8081
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=hustlex
+      - DB_PASSWORD=hustlex_dev_password
+      - DB_NAME=hustlex
+      - DB_SSL_MODE=disable
+      - REDIS_HOST=dragonfly
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=hustlex_redis_password
+      - JWT_SECRET=hustlex_jwt_secret_key_min_32_chars_long
+      - JWT_ISSUER=hustlex
       - HASURA_GRAPHQL_URL=http://hasura:8080/v1/graphql
       - HASURA_ADMIN_SECRET=hustlex_hasura_admin_secret
-      - JWT_SECRET=hustlex_jwt_secret_key_min_32_chars_long
-      - PORT=8081
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8080
     ports:
       - "8081:8081"
     depends_on:
@@ -189,9 +197,11 @@ services:
     build:
       context: ./apps/recommendation
       dockerfile: Dockerfile
+      target: production-go-only
     container_name: hustlex-recommendation
     environment:
       - ENV=development
+      - PORT=8081
       - DATABASE_URL=postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex?sslmode=disable
       - REDIS_URL=redis://:hustlex_redis_password@dragonfly:6379/1
       - MODEL_PATH=/app/models
@@ -203,7 +213,6 @@ services:
       dragonfly:
         condition: service_healthy
     volumes:
-      - ./apps/recommendation:/app
       - ml_models:/app/models
     networks:
       - hustlex-network
@@ -217,19 +226,18 @@ services:
     build:
       context: ./apps/admin-web
       dockerfile: Dockerfile
+      target: production
     container_name: hustlex-admin
     environment:
       - VITE_API_URL=http://localhost:8081
       - VITE_GRAPHQL_URL=http://localhost:8080/v1/graphql
+      - VITE_WS_URL=ws://localhost:8080/v1/graphql
       - VITE_HASURA_ADMIN_SECRET=hustlex_hasura_admin_secret
     ports:
       - "3000:3000"
     depends_on:
       - api
       - hasura
-    volumes:
-      - ./apps/admin-web:/app
-      - /app/node_modules
     networks:
       - hustlex-network
     restart: unless-stopped

@@ -1,0 +1,28 @@
+# HustleX Recommendation Service - Python ML Dependencies
+
+# Core ML libraries
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+scikit-learn>=1.3.0,<2.0.0
+scipy>=1.11.0,<2.0.0
+joblib>=1.3.0,<2.0.0
+
+# Deep learning for embeddings (optional but recommended)
+sentence-transformers>=2.2.0,<3.0.0
+torch>=2.0.0,<3.0.0
+
+# Association rule mining
+mlxtend>=0.22.0,<1.0.0
+
+# Database connectivity
+asyncpg>=0.29.0,<1.0.0
+redis>=5.0.0,<6.0.0
+
+# HTTP server for ML API
+fastapi>=0.109.0,<1.0.0
+uvicorn>=0.27.0,<1.0.0
+pydantic>=2.5.0,<3.0.0
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
+structlog>=24.1.0,<25.0.0

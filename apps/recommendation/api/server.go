@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
-	recommendation "vendorplatform/recommendation-engine"
+	recommendation "recommendation"
 )
 
 // =============================================================================
@@ -345,7 +345,7 @@ func (s *Server) getTrendingRecommendations(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	internalReq.RequestedTypes = []recommendation.RecommendationType{recommendation.TrendingService}
+	internalReq.RequestedTypes = []recommendation.RecommendationType{recommendation.TrendingType}
 
 	resp, err := s.engine.GetRecommendations(ctx, internalReq)
 	if err != nil {

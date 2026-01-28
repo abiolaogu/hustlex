@@ -3,15 +3,12 @@ import {
   useTable,
   EditButton,
   ShowButton,
-  DeleteButton,
-  FilterDropdown,
-  useSelect,
   Show,
   Edit,
   useForm,
 } from "@refinedev/antd";
-import { Table, Space, Tag, Input, Select, Form, Card, Descriptions } from "antd";
-import { useShow, useOne } from "@refinedev/core";
+import { Table, Space, Tag, Select, Form, Card, Descriptions } from "antd";
+import { useShow } from "@refinedev/core";
 
 export const UserList: React.FC = () => {
   const { tableProps } = useTable({

@@ -5,7 +5,6 @@ import {
   ShopOutlined,
   CalendarOutlined,
   ArrowUpOutlined,
-  ArrowDownOutlined,
 } from "@ant-design/icons";
 
 const { Title } = Typography;

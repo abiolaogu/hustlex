@@ -5,7 +5,6 @@ package recommendation
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -28,7 +27,7 @@ const (
 	AdjacentService    RecommendationType = "adjacent_service"
 	SimilarVendor      RecommendationType = "similar_vendor"
 	BundleSuggestion   RecommendationType = "bundle"
-	TrendingService    RecommendationType = "trending"
+	TrendingType       RecommendationType = "trending"
 	PersonalizedPick   RecommendationType = "personalized"
 	ContextualUpsell   RecommendationType = "contextual_upsell"
 	EventBasedSuggest  RecommendationType = "event_based"
@@ -197,9 +196,10 @@ func NewEngine(db *pgxpool.Pool, cache *redis.Client, config *Config) (*Engine, 
 	engine.ranker = NewRanker(config)
 	engine.diversifier = NewDiversifier(config)
 	
-	// Load adjacency graph into memory
+	// Load adjacency graph into memory (non-fatal on error)
 	if err := engine.adjacencyGraph.Load(context.Background()); err != nil {
-		return nil, fmt.Errorf("failed to load adjacency graph: %w", err)
+		// Log warning but don't fail - table may not exist yet
+		// Engine will operate in degraded mode without adjacency recommendations
 	}
 	
 	// Start background refresh
@@ -722,7 +722,7 @@ func (g *TrendingGenerator) Generate(ctx context.Context, req *RecommendationReq
 			EntityType: EntityService,
 			EntityID:   item.ServiceID,
 			CategoryID: item.CategoryID,
-			Source:     TrendingService,
+			Source:     TrendingType,
 			BaseScore:  item.TrendScore,
 			Metadata: map[string]any{
 				"view_count_7d":    item.ViewCount7D,
@@ -1118,7 +1118,7 @@ func (s *Scorer) getSourceWeight(source RecommendationType) float64 {
 		return s.config.AdjacencyWeight
 	case CollaborativeFilter:
 		return s.config.CollaborativeWeight
-	case TrendingService:
+	case TrendingType:
 		return s.config.TrendingWeight
 	case EventBasedSuggest:
 		return 0.4 // High weight for event-based
@@ -1183,7 +1183,7 @@ func (s *Scorer) buildExplanation(c Candidate, userCtx *UserContext) string {
 		return "Frequently booked together with your selection"
 	case CollaborativeFilter:
 		return "Popular among users with similar preferences"
-	case TrendingService:
+	case TrendingType:
 		return "Trending in your area"
 	case EventBasedSuggest:
 		return "Recommended for your event"

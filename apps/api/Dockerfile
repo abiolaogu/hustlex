@@ -8,7 +8,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build
 # -----------------------------------------------------------------------------
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -80,11 +80,11 @@ RUN mkdir -p /var/log/hustlex /app/uploads && \
 USER hustlex
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8081
 
 # Health check (matches /health endpoint in router.go)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:8081/health || exit 1
 
 # Run the application
 ENTRYPOINT ["./hustlex-api"]
@@ -92,7 +92,7 @@ ENTRYPOINT ["./hustlex-api"]
 # -----------------------------------------------------------------------------
 # Stage 3: Development (optional - for hot reloading)
 # -----------------------------------------------------------------------------
-FROM golang:1.22-alpine AS development
+FROM golang:1.24-alpine AS development
 
 # Install development tools
 RUN apk add --no-cache \
@@ -101,8 +101,8 @@ RUN apk add --no-cache \
     tzdata \
     curl
 
-# Install Air for hot reloading
-RUN go install github.com/cosmtrek/air@latest
+# Install Air for hot reloading (pinned to compatible version)
+RUN go install github.com/air-verse/air@v1.52.3
 
 # Set working directory
 WORKDIR /app
@@ -117,7 +117,7 @@ RUN go mod download
 COPY . .
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8081
 
 # Default command for development
 CMD ["air", "-c", ".air.toml"]
