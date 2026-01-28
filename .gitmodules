@@ -1,3 +1,6 @@
 [submodule "global-fintech"]
 	path = global-fintech
 	url = https://github.com/abiolaogu/Global-FinTech.git
+[submodule "/Users/AbiolaOgunsakin1/hustlex-pro/infrastructure/vas"]
+	path = /Users/AbiolaOgunsakin1/hustlex-pro/infrastructure/vas
+	url = https://github.com/abiolaogu/Project-Catalyst.git
