@@ -1,0 +1,81 @@
+# =============================================================================
+# HustleX Kustomization (Production)
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: hustlex-production
+
+namespace: hustlex
+
+resources:
+  - ../../base
+
+commonLabels:
+  environment: production
+
+# Production-specific patches
+patches:
+  # Increase replicas for production
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 5
+    target:
+      kind: Deployment
+      name: hustlex-api
+
+  # Increase resources for production
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "250m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+    target:
+      kind: Deployment
+      name: hustlex-api
+
+  # Increase HPA for production
+  - patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 5
+      - op: replace
+        path: /spec/maxReplicas
+        value: 20
+    target:
+      kind: HorizontalPodAutoscaler
+      name: hustlex-api
+
+  # Update PDB for production
+  - patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 3
+    target:
+      kind: PodDisruptionBudget
+      name: hustlex-api
+
+# Override ConfigMap values for production
+configMapGenerator:
+  - name: hustlex-api-config
+    behavior: merge
+    literals:
+      - GO_ENV=production
+      - LOG_LEVEL=info
+      - ENABLE_SWAGGER=false
+      - CORS_ALLOWED_ORIGINS=https://hustlex.ng,https://app.hustlex.ng
+
+# Images for production (use specific version tags)
+images:
+  - name: ghcr.io/hustlex/hustlex/api
+    newTag: v1.0.0

@@ -1,0 +1,27 @@
+# =============================================================================
+# HustleX Pod Disruption Budget
+# =============================================================================
+# Ensures minimum availability during voluntary disruptions
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hustlex-api
+  namespace: hustlex
+  labels:
+    app.kubernetes.io/name: hustlex
+    app.kubernetes.io/component: api
+spec:
+  # Always maintain at least 2 pods running
+  minAvailable: 2
+
+  # Alternative: Allow at most 1 pod to be unavailable
+  # maxUnavailable: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hustlex
+      app.kubernetes.io/component: api
+
+  # Unhealthy pod eviction policy (Kubernetes 1.27+)
+  # unhealthyPodEvictionPolicy: IfHealthyBudget

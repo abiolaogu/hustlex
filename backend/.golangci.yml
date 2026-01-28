@@ -1,0 +1,162 @@
+# =============================================================================
+# golangci-lint configuration
+# =============================================================================
+# Reference: https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+  skip-dirs:
+    - vendor
+    - third_party
+    - testdata
+  skip-files:
+    - ".*_test.go$"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+
+linters:
+  enable:
+    # Default linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Additional linters
+    - bodyclose        # Check HTTP response body is closed
+    - contextcheck     # Check context propagation
+    - durationcheck    # Check duration calculations
+    - errname          # Check error naming conventions
+    - errorlint        # Find issues with error wrapping
+    - exhaustive       # Check exhaustive switches
+    - exportloopref    # Check for pointers to loop variables
+    - forbidigo        # Forbid specific function calls
+    - goconst          # Find repeated strings that could be constants
+    - gocritic         # Opinionated Go linter
+    - gocyclo          # Cyclomatic complexity
+    - gofmt            # Check code formatting
+    - goimports        # Check imports
+    - gosec            # Security linter
+    - misspell         # Find misspellings
+    - nilerr           # Find err == nil then return err
+    - noctx            # Find HTTP requests without context
+    - prealloc         # Find slice allocations that could be preallocated
+    - predeclared      # Find shadowed predeclared identifiers
+    - revive           # Replacement for golint
+    - rowserrcheck     # Check sql.Rows.Err is checked
+    - sqlclosecheck    # Check sql.Rows and sql.Stmt are closed
+    - unconvert        # Find unnecessary type conversions
+    - unparam          # Find unused function parameters
+    - whitespace       # Find leading/trailing whitespace
+
+  disable:
+    - funlen           # Too restrictive for handlers
+    - gochecknoglobals # We need some globals (config, etc.)
+    - gochecknoinits   # Init functions are useful
+    - lll              # Line length is handled by formatter
+    - wsl              # Too opinionated
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - (io.Closer).Close
+      - (net/http.ResponseWriter).Write
+
+  govet:
+    check-shadowing: true
+    enable-all: true
+    disable:
+      - fieldalignment  # Too noisy
+
+  gocyclo:
+    min-complexity: 20
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - hugeParam       # We use value receivers for small structs
+      - rangeValCopy    # Sometimes needed for safety
+
+  gosec:
+    excludes:
+      - G104  # Unhandled errors (handled by errcheck)
+      - G304  # File inclusion via variable (we validate paths)
+    config:
+      G306:
+        "0644"  # Acceptable file permissions
+
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+
+  misspell:
+    locale: US
+
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+issues:
+  exclude-rules:
+    # Exclude some linters from test files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - gosec
+        - goconst
+        - prealloc
+
+    # Exclude generated files
+    - path: mock_
+      linters:
+        - all
+
+    # Allow fmt.Print in main and cmd packages
+    - path: (cmd|main)\.go
+      linters:
+        - forbidigo
+
+  max-issues-per-linter: 50
+  max-same-issues: 10
+  new: false
