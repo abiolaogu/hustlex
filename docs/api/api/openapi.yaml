@@ -1,0 +1,3784 @@
+openapi: 3.1.0
+info:
+  title: HustleX API
+  description: |
+    HustleX is a Nigerian fintech super app combining gig marketplace,
+    social savings (Ajo/Esusu), and alternative credit scoring.
+
+    ## Authentication
+
+    All endpoints except `/auth/*` and `/health` require a Bearer token in the Authorization header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+
+    ## Rate Limiting
+
+    API requests are rate limited per endpoint category:
+    - Authentication endpoints: 5 requests/minute
+    - Standard endpoints: 100 requests/minute
+    - Heavy endpoints (reports, exports): 10 requests/minute
+    - Webhook endpoints: 1000 requests/minute
+
+    Rate limit headers are included in all responses:
+    - `X-RateLimit-Limit`: Request limit per window
+    - `X-RateLimit-Remaining`: Remaining requests in current window
+    - `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+    ## Pagination
+
+    List endpoints support cursor-based pagination:
+    - `limit`: Number of items per page (default: 20, max: 100)
+    - `cursor`: Opaque cursor for next page (from previous response)
+
+    Response includes:
+    ```json
+    {
+      "data": [...],
+      "pagination": {
+        "next_cursor": "eyJpZCI6MTAwfQ==",
+        "has_more": true
+      }
+    }
+    ```
+
+    ## Error Handling
+
+    All errors follow RFC 7807 Problem Details format:
+    ```json
+    {
+      "type": "https://api.hustlex.app/errors/insufficient-funds",
+      "title": "Insufficient Funds",
+      "status": 402,
+      "detail": "Your wallet balance of NGN 500.00 is less than the requested amount of NGN 1,000.00",
+      "instance": "/wallet/transfer",
+      "errors": {
+        "amount": "Exceeds available balance"
+      }
+    }
+    ```
+
+    ## Idempotency
+
+    For POST requests that modify state (transfers, payments), include an `Idempotency-Key` header:
+    ```
+    Idempotency-Key: <unique-request-id>
+    ```
+
+    Idempotency keys are valid for 24 hours.
+
+    ## Webhooks
+
+    HustleX sends webhooks for various events. See the Webhooks section for details.
+
+  version: 1.0.0
+  contact:
+    name: HustleX API Support
+    email: api@hustlex.app
+    url: https://developers.hustlex.app
+  license:
+    name: Proprietary
+    url: https://hustlex.app/terms
+  x-logo:
+    url: https://hustlex.app/logo.png
+    altText: HustleX Logo
+
+servers:
+  - url: https://api.hustlex.app/v1
+    description: Production
+  - url: https://staging-api.hustlex.app/v1
+    description: Staging
+  - url: http://localhost:8080/v1
+    description: Development
+
+tags:
+  - name: Authentication
+    description: |
+      User authentication and session management.
+
+      HustleX uses OTP-based authentication with phone numbers.
+      The flow is:
+      1. Request OTP via `/auth/login` or `/auth/register`
+      2. Verify OTP via `/auth/verify-otp` to get tokens
+      3. Use access token for authenticated requests
+      4. Refresh tokens via `/auth/refresh` when expired
+  - name: Wallet
+    description: |
+      Digital wallet operations including deposits, withdrawals, and transfers.
+
+      All monetary amounts are in the wallet's currency (NGN by default).
+      Amounts are represented as decimal numbers (e.g., 1000.50 for NGN 1,000.50).
+  - name: Gigs
+    description: |
+      Gig marketplace operations.
+
+      Users can post gigs (as clients) or submit proposals (as freelancers).
+      Payments are held in escrow until work is completed.
+  - name: Savings
+    description: |
+      Ajo/Esusu savings circles.
+
+      Traditional Nigerian rotating savings adapted for digital.
+      Members contribute regularly and take turns receiving the pool.
+  - name: Credit
+    description: |
+      Credit scoring and loans.
+
+      Alternative credit scoring based on:
+      - Savings circle participation
+      - Gig completion rate
+      - Wallet activity
+      - Payment history
+  - name: Profile
+    description: User profile and settings management
+  - name: Notifications
+    description: Push notification preferences and history
+  - name: Webhooks
+    description: |
+      Webhook events for integrations.
+
+      Webhooks are sent as POST requests with JSON payloads.
+      All webhooks include a signature header for verification.
+  - name: Health
+    description: Service health and status endpoints
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ====================
+  # AUTHENTICATION
+  # ====================
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      description: |
+        Register a new user with phone number. An OTP will be sent via SMS for verification.
+
+        Phone numbers must be valid Nigerian numbers starting with 070, 080, 081, 090, or 091.
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              basic:
+                summary: Basic registration
+                value:
+                  phone: "08012345678"
+                  first_name: "John"
+                  last_name: "Doe"
+              with_referral:
+                summary: Registration with referral
+                value:
+                  phone: "08012345678"
+                  first_name: "John"
+                  last_name: "Doe"
+                  email: "john@example.com"
+                  referral_code: "REF123ABC"
+      responses:
+        '201':
+          description: User registered successfully. OTP sent to phone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                message: "Registration successful. Please verify your phone number."
+                user_id: "550e8400-e29b-41d4-a716-446655440000"
+                otp_expires_at: "2024-01-15T10:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Phone number already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: "https://api.hustlex.app/errors/phone-exists"
+                title: "Phone Already Registered"
+                status: 409
+                detail: "The phone number 08012345678 is already registered"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Request OTP for login
+      description: |
+        Request a one-time password sent to the user's registered phone number.
+        OTP is valid for 5 minutes.
+      operationId: requestLoginOtp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^0[789][01]\d{8}$'
+                  description: Nigerian phone number (11 digits)
+                  example: "08012345678"
+            example:
+              phone: "08012345678"
+      responses:
+        '200':
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+                  masked_phone:
+                    type: string
+                    description: Masked phone for display
+              example:
+                message: "OTP sent successfully"
+                expires_at: "2024-01-15T10:35:00Z"
+                masked_phone: "080****5678"
+        '404':
+          description: Phone number not registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/verify-otp:
+    post:
+      tags: [Authentication]
+      summary: Verify OTP and get tokens
+      description: |
+        Verify the OTP and receive access and refresh tokens.
+
+        - Access token expires in 15 minutes
+        - Refresh token expires in 7 days
+      operationId: verifyOtp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, otp]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^0[789][01]\d{8}$'
+                  example: "08012345678"
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                  pattern: '^\d{6}$'
+                  example: "123456"
+                device_info:
+                  type: object
+                  description: Optional device information for security
+                  properties:
+                    device_id:
+                      type: string
+                    device_name:
+                      type: string
+                    platform:
+                      type: string
+                      enum: [ios, android, web]
+            example:
+              phone: "08012345678"
+              otp: "123456"
+              device_info:
+                device_id: "abc123"
+                device_name: "iPhone 14"
+                platform: "ios"
+      responses:
+        '200':
+          description: OTP verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: "eyJhbGciOiJIUzI1NiIs..."
+                refresh_token: "dGhpcyBpcyBhIHJlZnJl..."
+                token_type: "Bearer"
+                expires_in: 900
+                user:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  phone: "08012345678"
+                  first_name: "John"
+                  last_name: "Doe"
+                  has_pin: false
+        '400':
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: "https://api.hustlex.app/errors/invalid-otp"
+                title: "Invalid OTP"
+                status: 400
+                detail: "The OTP entered is invalid or has expired"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      description: |
+        Exchange a valid refresh token for a new access token.
+        The refresh token is also rotated for security.
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                  description: Valid refresh token from previous authentication
+            example:
+              refresh_token: "dGhpcyBpcyBhIHJlZnJl..."
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and invalidate tokens
+      description: |
+        Invalidate the current session and all associated tokens.
+        Optionally logout from all devices.
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                all_devices:
+                  type: boolean
+                  default: false
+                  description: Logout from all devices
+      responses:
+        '204':
+          description: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/resend-otp:
+    post:
+      tags: [Authentication]
+      summary: Resend OTP
+      description: |
+        Resend OTP to phone number. Limited to 3 requests per 10 minutes.
+      operationId: resendOtp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^0[789][01]\d{8}$'
+      responses:
+        '200':
+          description: OTP resent
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ====================
+  # WALLET
+  # ====================
+  /wallet:
+    get:
+      tags: [Wallet]
+      summary: Get wallet details
+      description: |
+        Retrieve the current user's wallet with all balances.
+
+        Balance types:
+        - `available_balance`: Funds available for withdrawal/transfer
+        - `escrow_balance`: Funds held for ongoing gigs
+        - `savings_balance`: Funds in savings circles
+        - `ledger_balance`: Total balance (available + escrow + savings)
+      operationId: getWallet
+      responses:
+        '200':
+          description: Wallet details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440001"
+                  available_balance: 50000.00
+                  escrow_balance: 15000.00
+                  savings_balance: 25000.00
+                  ledger_balance: 90000.00
+                  currency: "NGN"
+                  status: "active"
+                  created_at: "2024-01-01T00:00:00Z"
+                  updated_at: "2024-01-15T10:00:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: Get transaction history
+      description: |
+        Retrieve paginated transaction history with optional filters.
+        Transactions are sorted by date descending (newest first).
+      operationId: getTransactions
+      parameters:
+        - name: limit
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Pagination cursor from previous response
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Filter by transaction type
+          schema:
+            type: string
+            enum: [deposit, withdrawal, transfer_in, transfer_out, gig_payment, gig_earning, contribution, payout, loan_disbursement, loan_repayment]
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed, reversed]
+        - name: start_date
+          in: query
+          description: Filter transactions from this date
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: Filter transactions until this date
+          schema:
+            type: string
+            format: date
+        - name: min_amount
+          in: query
+          description: Minimum transaction amount
+          schema:
+            type: number
+        - name: max_amount
+          in: query
+          description: Maximum transaction amount
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /wallet/transactions/{id}:
+    get:
+      tags: [Wallet]
+      summary: Get transaction details
+      description: Get detailed information about a specific transaction.
+      operationId: getTransaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Transaction ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wallet/deposit/initialize:
+    post:
+      tags: [Wallet]
+      summary: Initialize deposit
+      description: |
+        Initialize a card deposit and get payment authorization URL.
+
+        Supported payment providers:
+        - Paystack (default)
+        - Flutterwave
+
+        Minimum deposit: NGN 100
+        Maximum deposit: NGN 10,000,000
+      operationId: initiateDeposit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  minimum: 100
+                  maximum: 10000000
+                  description: Amount in Naira
+                  example: 10000.00
+                provider:
+                  type: string
+                  enum: [paystack, flutterwave]
+                  default: paystack
+                callback_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect after payment
+            example:
+              amount: 10000.00
+              provider: "paystack"
+              callback_url: "hustlex://wallet/deposit/callback"
+      responses:
+        '200':
+          description: Deposit initialized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorization_url:
+                    type: string
+                    format: uri
+                    description: URL to complete payment
+                  access_code:
+                    type: string
+                    description: Paystack access code for inline payment
+                  reference:
+                    type: string
+                    description: Unique transaction reference
+                  expires_at:
+                    type: string
+                    format: date-time
+              example:
+                authorization_url: "https://checkout.paystack.com/abc123"
+                access_code: "abc123xyz"
+                reference: "HX_DEP_1705312200_abc123"
+                expires_at: "2024-01-15T11:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /wallet/deposit/verify:
+    post:
+      tags: [Wallet]
+      summary: Verify deposit
+      description: |
+        Verify a completed deposit transaction.
+        This is typically called after the user completes payment on the provider's page.
+      operationId: verifyDeposit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties:
+                reference:
+                  type: string
+                  description: Transaction reference from initialization
+            example:
+              reference: "HX_DEP_1705312200_abc123"
+      responses:
+        '200':
+          description: Deposit verified and credited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          description: Verification failed or payment not completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /wallet/withdraw:
+    post:
+      tags: [Wallet]
+      summary: Initiate withdrawal
+      description: |
+        Withdraw funds to a saved bank account.
+
+        Requirements:
+        - User must have set a transaction PIN
+        - Bank account must be verified
+        - Sufficient available balance
+
+        Minimum withdrawal: NGN 100
+        Processing time: Instant to 24 hours depending on bank
+      operationId: initiateWithdrawal
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Unique key to prevent duplicate withdrawals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, bank_account_id, pin]
+              properties:
+                amount:
+                  type: number
+                  minimum: 100
+                  description: Amount in Naira
+                  example: 5000.00
+                bank_account_id:
+                  type: string
+                  format: uuid
+                  description: ID of saved bank account
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                  pattern: '^\d{4}$'
+                  description: 4-digit transaction PIN
+                narration:
+                  type: string
+                  maxLength: 100
+                  description: Optional narration
+            example:
+              amount: 5000.00
+              bank_account_id: "550e8400-e29b-41d4-a716-446655440002"
+              pin: "1234"
+              narration: "Weekly savings withdrawal"
+      responses:
+        '200':
+          description: Withdrawal initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          description: Insufficient funds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: "https://api.hustlex.app/errors/insufficient-funds"
+                title: "Insufficient Funds"
+                status: 402
+                detail: "Your available balance of NGN 3,000.00 is less than the requested amount of NGN 5,000.00"
+        '403':
+          description: Invalid PIN or account locked
+        '404':
+          description: Bank account not found
+
+  /wallet/transfer:
+    post:
+      tags: [Wallet]
+      summary: Transfer to another user
+      description: |
+        Transfer funds to another HustleX user by phone number.
+        Transfers are instant and free.
+
+        Requirements:
+        - User must have set a transaction PIN
+        - Recipient must be a registered user
+        - Sufficient available balance
+      operationId: transferFunds
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, recipient_phone, pin]
+              properties:
+                amount:
+                  type: number
+                  minimum: 10
+                  description: Amount in Naira
+                  example: 1000.00
+                recipient_phone:
+                  type: string
+                  pattern: '^0[789][01]\d{8}$'
+                  description: Recipient's phone number
+                  example: "08098765432"
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                  pattern: '^\d{4}$'
+                narration:
+                  type: string
+                  maxLength: 100
+                  description: Optional message to recipient
+            example:
+              amount: 1000.00
+              recipient_phone: "08098765432"
+              pin: "1234"
+              narration: "Lunch money"
+      responses:
+        '200':
+          description: Transfer successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          description: Insufficient funds
+        '403':
+          description: Invalid PIN
+        '404':
+          description: Recipient not found
+
+  /wallet/bank-accounts:
+    get:
+      tags: [Wallet]
+      summary: Get saved bank accounts
+      description: List all bank accounts saved by the user.
+      operationId: getBankAccounts
+      responses:
+        '200':
+          description: Bank accounts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BankAccount'
+              example:
+                data:
+                  - id: "550e8400-e29b-41d4-a716-446655440002"
+                    account_number: "0123456789"
+                    account_name: "JOHN DOE"
+                    bank_code: "058"
+                    bank_name: "GTBank"
+                    is_default: true
+                    created_at: "2024-01-01T00:00:00Z"
+
+    post:
+      tags: [Wallet]
+      summary: Add bank account
+      description: |
+        Add a new bank account for withdrawals.
+        The account will be verified automatically before being saved.
+      operationId: addBankAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_number, bank_code]
+              properties:
+                account_number:
+                  type: string
+                  pattern: '^\d{10}$'
+                  description: 10-digit NUBAN account number
+                bank_code:
+                  type: string
+                  description: Bank code (e.g., "058" for GTBank)
+                is_default:
+                  type: boolean
+                  default: false
+            example:
+              account_number: "0123456789"
+              bank_code: "058"
+              is_default: true
+      responses:
+        '201':
+          description: Bank account added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BankAccount'
+        '400':
+          description: Invalid account details or verification failed
+
+  /wallet/bank-accounts/{id}:
+    delete:
+      tags: [Wallet]
+      summary: Remove bank account
+      operationId: removeBankAccount
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Bank account removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wallet/bank-accounts/verify:
+    post:
+      tags: [Wallet]
+      summary: Verify bank account
+      description: |
+        Verify bank account details before adding.
+        Returns the account holder's name for confirmation.
+      operationId: verifyBankAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_number, bank_code]
+              properties:
+                account_number:
+                  type: string
+                  pattern: '^\d{10}$'
+                bank_code:
+                  type: string
+            example:
+              account_number: "0123456789"
+              bank_code: "058"
+      responses:
+        '200':
+          description: Account verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account_name:
+                    type: string
+                  account_number:
+                    type: string
+                  bank_name:
+                    type: string
+              example:
+                account_name: "JOHN DOE"
+                account_number: "0123456789"
+                bank_name: "Guaranty Trust Bank"
+        '400':
+          description: Invalid account or verification failed
+
+  /wallet/banks:
+    get:
+      tags: [Wallet]
+      summary: Get list of banks
+      description: Get list of supported Nigerian banks.
+      operationId: getBanks
+      security: []
+      responses:
+        '200':
+          description: Banks list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                        name:
+                          type: string
+                        slug:
+                          type: string
+
+  # ====================
+  # GIGS
+  # ====================
+  /gigs:
+    get:
+      tags: [Gigs]
+      summary: List gigs
+      description: |
+        Browse available gigs in the marketplace.
+        Returns active gigs by default, sorted by newest first.
+      operationId: listGigs
+      parameters:
+        - name: category
+          in: query
+          description: Filter by category
+          schema:
+            type: string
+            enum: [tech, design, writing, marketing, video, audio, translation, data, admin, other]
+        - name: min_budget
+          in: query
+          schema:
+            type: number
+            minimum: 0
+        - name: max_budget
+          in: query
+          schema:
+            type: number
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, in_progress, completed, cancelled]
+        - name: is_remote
+          in: query
+          schema:
+            type: boolean
+        - name: skills
+          in: query
+          description: Comma-separated list of required skills
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [newest, oldest, budget_high, budget_low, deadline]
+            default: newest
+        - name: search
+          in: query
+          description: Search in title and description
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Gigs list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GigListResponse'
+
+    post:
+      tags: [Gigs]
+      summary: Create a gig
+      description: |
+        Post a new gig to the marketplace.
+        Gigs are created in 'draft' status and must be published to be visible.
+      operationId: createGig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGigRequest'
+            example:
+              title: "Build a mobile app for my business"
+              description: "I need a Flutter developer to build a simple e-commerce app..."
+              category: "tech"
+              budget_min: 100000
+              budget_max: 150000
+              deadline: "2024-02-15"
+              duration_days: 30
+              is_remote: true
+              skills: ["flutter", "dart", "firebase"]
+      responses:
+        '201':
+          description: Gig created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GigResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /gigs/my:
+    get:
+      tags: [Gigs]
+      summary: Get my gigs
+      description: Get gigs created by the current user (as client).
+      operationId: getMyGigs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, in_progress, completed, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: My gigs list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GigListResponse'
+
+  /gigs/{id}:
+    get:
+      tags: [Gigs]
+      summary: Get gig details
+      operationId: getGig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Gig details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GigResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Gigs]
+      summary: Update gig
+      description: Update a gig. Only draft gigs can be fully edited.
+      operationId: updateGig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGigRequest'
+      responses:
+        '200':
+          description: Gig updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GigResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Cannot edit gig in current status
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Gigs]
+      summary: Cancel gig
+      description: Cancel a gig. Only draft or active gigs with no accepted proposals can be cancelled.
+      operationId: cancelGig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Gig cancelled
+        '403':
+          description: Cannot cancel gig in current status
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /gigs/{id}/publish:
+    post:
+      tags: [Gigs]
+      summary: Publish gig
+      description: Publish a draft gig to make it visible in the marketplace.
+      operationId: publishGig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Gig published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GigResponse'
+        '400':
+          description: Gig validation failed
+        '403':
+          description: Can only publish draft gigs
+
+  /gigs/{id}/proposals:
+    get:
+      tags: [Gigs]
+      summary: Get proposals for a gig
+      description: |
+        Get all proposals submitted for a gig.
+        Only the gig client can view all proposals.
+      operationId: getGigProposals
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, accepted, rejected, withdrawn]
+      responses:
+        '200':
+          description: Proposals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Proposal'
+        '403':
+          description: Not authorized to view proposals
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Gigs]
+      summary: Submit a proposal
+      description: Submit a proposal for a gig as a freelancer.
+      operationId: submitProposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProposalRequest'
+            example:
+              bid_amount: 120000
+              cover_letter: "I am an experienced Flutter developer with 5 years of experience..."
+              delivery_days: 21
+              attachments: []
+      responses:
+        '201':
+          description: Proposal submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Proposal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Cannot submit proposal (own gig or already submitted)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /gigs/proposals/my:
+    get:
+      tags: [Gigs]
+      summary: Get my proposals
+      description: Get proposals submitted by the current user (as freelancer).
+      operationId: getMyProposals
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, accepted, rejected, withdrawn]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: My proposals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Proposal'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /gigs/proposals/{id}/accept:
+    post:
+      tags: [Gigs]
+      summary: Accept proposal
+      description: |
+        Accept a proposal and create a contract.
+        The gig budget will be moved to escrow.
+      operationId: acceptProposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Proposal accepted, contract created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Contract'
+        '402':
+          description: Insufficient funds for escrow
+        '403':
+          description: Not authorized
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /gigs/proposals/{id}/reject:
+    post:
+      tags: [Gigs]
+      summary: Reject proposal
+      operationId: rejectProposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Proposal rejected
+        '403':
+          description: Not authorized
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /gigs/contracts/{id}:
+    get:
+      tags: [Gigs]
+      summary: Get contract details
+      operationId: getContract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Contract details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Contract'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /gigs/contracts/{id}/complete:
+    post:
+      tags: [Gigs]
+      summary: Complete contract
+      description: |
+        Mark a contract as complete and release escrow payment to freelancer.
+        Only the client can complete a contract.
+      operationId: completeContract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                review:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Contract completed, payment released
+        '403':
+          description: Not authorized
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /gigs/categories:
+    get:
+      tags: [Gigs]
+      summary: Get gig categories
+      description: Get list of available gig categories.
+      operationId: getCategories
+      security: []
+      responses:
+        '200':
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        gig_count:
+                          type: integer
+
+  # ====================
+  # SAVINGS (AJO/ESUSU)
+  # ====================
+  /savings/circles:
+    get:
+      tags: [Savings]
+      summary: List my circles
+      description: Get savings circles the current user is a member of.
+      operationId: listMyCircles
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, active, completed, cancelled]
+        - name: role
+          in: query
+          description: Filter by user's role in circle
+          schema:
+            type: string
+            enum: [admin, member]
+      responses:
+        '200':
+          description: Circles list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Circle'
+
+    post:
+      tags: [Savings]
+      summary: Create a savings circle
+      description: |
+        Create a new savings circle.
+        The creator automatically becomes the admin.
+
+        Circle types:
+        - `ajo`: Rotating savings where members take turns receiving the pot
+        - `esusu`: Target savings with fixed duration
+        - `goal`: Personal goal savings with friends for accountability
+      operationId: createCircle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCircleRequest'
+            example:
+              name: "Monthly Savings Club"
+              description: "A group for saving towards our goals"
+              type: "ajo"
+              contribution_amount: 10000
+              frequency: "monthly"
+              max_members: 12
+              is_private: false
+              start_date: "2024-02-01"
+      responses:
+        '201':
+          description: Circle created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Circle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /savings/circles/discover:
+    get:
+      tags: [Savings]
+      summary: Discover public circles
+      description: Browse public circles available to join.
+      operationId: discoverCircles
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ajo, esusu, goal]
+        - name: frequency
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, biweekly, monthly]
+        - name: min_contribution
+          in: query
+          schema:
+            type: number
+        - name: max_contribution
+          in: query
+          schema:
+            type: number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public circles list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Circle'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /savings/circles/{id}:
+    get:
+      tags: [Savings]
+      summary: Get circle details
+      operationId: getCircle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Circle details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Circle'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Savings]
+      summary: Update circle
+      description: Update circle details. Only admins can update.
+      operationId: updateCircle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                is_private:
+                  type: boolean
+      responses:
+        '200':
+          description: Circle updated
+        '403':
+          description: Not authorized (not admin)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/join:
+    post:
+      tags: [Savings]
+      summary: Join a circle
+      description: Join a public circle or private circle with invite code.
+      operationId: joinCircle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                invite_code:
+                  type: string
+                  description: Required for private circles
+      responses:
+        '200':
+          description: Joined circle
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CircleMember'
+        '400':
+          description: Invalid invite code or circle full
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/leave:
+    post:
+      tags: [Savings]
+      summary: Leave a circle
+      description: |
+        Leave a circle. Cannot leave if:
+        - You are the only admin
+        - Circle is active and you have pending contributions
+      operationId: leaveCircle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Left circle
+        '400':
+          description: Cannot leave circle in current state
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/contribute:
+    post:
+      tags: [Savings]
+      summary: Make a contribution
+      description: |
+        Make a contribution to a savings circle.
+        Amount is deducted from wallet balance.
+      operationId: contributeToCircle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                contribution_id:
+                  type: string
+                  format: uuid
+                  description: Specific contribution to pay (if multiple pending)
+            example:
+              pin: "1234"
+      responses:
+        '200':
+          description: Contribution successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Contribution'
+        '400':
+          description: No pending contribution or invalid request
+        '402':
+          description: Insufficient funds
+        '403':
+          description: Invalid PIN
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/members:
+    get:
+      tags: [Savings]
+      summary: Get circle members
+      operationId: getCircleMembers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Members list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CircleMember'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/contributions:
+    get:
+      tags: [Savings]
+      summary: Get circle contributions
+      operationId: getCircleContributions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cycle
+          in: query
+          description: Filter by cycle number
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, paid, overdue, missed]
+      responses:
+        '200':
+          description: Contributions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Contribution'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/payouts:
+    get:
+      tags: [Savings]
+      summary: Get circle payouts
+      operationId: getCirclePayouts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payouts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payout'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/circles/{id}/invite:
+    post:
+      tags: [Savings]
+      summary: Generate invite link
+      description: Generate an invite link/code for a private circle. Admin only.
+      operationId: generateCircleInvite
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invite generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite_code:
+                    type: string
+                  invite_url:
+                    type: string
+                    format: uri
+                  expires_at:
+                    type: string
+                    format: date-time
+        '403':
+          description: Not authorized (not admin)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /savings/stats:
+    get:
+      tags: [Savings]
+      summary: Get savings statistics
+      description: Get current user's savings statistics.
+      operationId: getSavingsStats
+      responses:
+        '200':
+          description: Savings stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavingsStats'
+
+  # ====================
+  # CREDIT
+  # ====================
+  /credit/score:
+    get:
+      tags: [Credit]
+      summary: Get credit score
+      description: |
+        Get current user's credit score and breakdown.
+
+        Score ranges:
+        - 300-499: Poor
+        - 500-649: Fair
+        - 650-749: Good
+        - 750-850: Excellent
+      operationId: getCreditScore
+      responses:
+        '200':
+          description: Credit score details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CreditScore'
+              example:
+                data:
+                  score: 680
+                  tier: "good"
+                  max_loan_amount: 200000
+                  factors:
+                    payment_history: 85
+                    savings_consistency: 70
+                    gig_performance: 90
+                    account_age: 60
+                    wallet_activity: 75
+                    community_trust: 80
+                  history:
+                    - score: 680
+                      date: "2024-01-15"
+                    - score: 665
+                      date: "2024-01-01"
+                  last_updated: "2024-01-15T00:00:00Z"
+                  next_update: "2024-02-01T00:00:00Z"
+
+  /credit/score/history:
+    get:
+      tags: [Credit]
+      summary: Get credit score history
+      operationId: getCreditScoreHistory
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 12
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Credit score history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        score:
+                          type: integer
+                        tier:
+                          type: string
+                        date:
+                          type: string
+                          format: date
+                        delta:
+                          type: integer
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /credit/score/tips:
+    get:
+      tags: [Credit]
+      summary: Get credit improvement tips
+      operationId: getCreditTips
+      responses:
+        '200':
+          description: Credit tips
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        description:
+                          type: string
+                        potential_increase:
+                          type: integer
+                          description: Potential score increase
+
+  /credit/eligibility:
+    get:
+      tags: [Credit]
+      summary: Check loan eligibility
+      operationId: checkLoanEligibility
+      responses:
+        '200':
+          description: Loan eligibility
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoanEligibility'
+
+  /credit/loans:
+    get:
+      tags: [Credit]
+      summary: List my loans
+      operationId: listMyLoans
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, disbursed, active, overdue, defaulted, paid, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Loans list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Loan'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Credit]
+      summary: Apply for a loan
+      description: |
+        Submit a loan application.
+
+        Requirements:
+        - Credit score of at least 500 (Fair)
+        - No active loan
+        - Account age of at least 30 days
+      operationId: applyForLoan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanApplicationRequest'
+            example:
+              amount: 50000
+              tenor_months: 3
+              purpose: "business"
+              purpose_description: "Stock purchase for my retail shop"
+      responses:
+        '201':
+          description: Loan application submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Loan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Not eligible for loan
+
+  /credit/loans/active:
+    get:
+      tags: [Credit]
+      summary: Get active loan
+      description: Get the user's current active loan, if any.
+      operationId: getActiveLoan
+      responses:
+        '200':
+          description: Active loan details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Loan'
+        '404':
+          description: No active loan
+
+  /credit/loans/{id}:
+    get:
+      tags: [Credit]
+      summary: Get loan details
+      operationId: getLoan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Loan details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Loan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /credit/loans/{id}/accept:
+    post:
+      tags: [Credit]
+      summary: Accept loan offer
+      description: Accept an approved loan offer to trigger disbursement.
+      operationId: acceptLoanOffer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Loan accepted, disbursement initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Loan'
+        '400':
+          description: Loan not in approved status
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /credit/loans/{id}/repay:
+    post:
+      tags: [Credit]
+      summary: Make loan repayment
+      operationId: repayLoan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, pin]
+              properties:
+                amount:
+                  type: number
+                  minimum: 100
+                  description: Repayment amount
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                repayment_id:
+                  type: string
+                  format: uuid
+                  description: Specific scheduled repayment to pay
+            example:
+              amount: 20000
+              pin: "1234"
+      responses:
+        '200':
+          description: Repayment successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LoanRepayment'
+        '402':
+          description: Insufficient funds
+        '403':
+          description: Invalid PIN
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /credit/loans/{id}/repayments:
+    get:
+      tags: [Credit]
+      summary: Get loan repayment schedule
+      operationId: getLoanRepayments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Repayment schedule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LoanRepayment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /credit/offers:
+    get:
+      tags: [Credit]
+      summary: Get available loan offers
+      description: Get loan products available based on user's credit score.
+      operationId: getLoanOffers
+      responses:
+        '200':
+          description: Loan offers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LoanOffer'
+
+  # ====================
+  # PROFILE
+  # ====================
+  /profile:
+    get:
+      tags: [Profile]
+      summary: Get my profile
+      operationId: getProfile
+      responses:
+        '200':
+          description: Profile details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Profile'
+
+    patch:
+      tags: [Profile]
+      summary: Update profile
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /profile/pin:
+    put:
+      tags: [Profile]
+      summary: Set or update PIN
+      description: |
+        Set or update the transaction PIN.
+        - New users: Only `new_pin` required
+        - Existing PIN: Both `current_pin` and `new_pin` required
+      operationId: setPin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_pin]
+              properties:
+                current_pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                  description: Required if PIN already set
+                new_pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                  pattern: '^\d{4}$'
+            examples:
+              set_new:
+                summary: Set new PIN
+                value:
+                  new_pin: "1234"
+              change:
+                summary: Change existing PIN
+                value:
+                  current_pin: "1234"
+                  new_pin: "5678"
+      responses:
+        '200':
+          description: PIN set/updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Invalid PIN format or weak PIN
+        '403':
+          description: Current PIN incorrect
+
+  /profile/pin/verify:
+    post:
+      tags: [Profile]
+      summary: Verify PIN
+      description: Verify the user's PIN without performing any action.
+      operationId: verifyPin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+      responses:
+        '200':
+          description: PIN is valid
+        '403':
+          description: PIN is invalid
+
+  /profile/biometric:
+    put:
+      tags: [Profile]
+      summary: Update biometric settings
+      operationId: updateBiometric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, pin]
+              properties:
+                enabled:
+                  type: boolean
+                pin:
+                  type: string
+                  description: PIN required to enable/disable biometric
+      responses:
+        '200':
+          description: Biometric settings updated
+        '403':
+          description: Invalid PIN
+
+  /profile/kyc:
+    get:
+      tags: [Profile]
+      summary: Get KYC status
+      operationId: getKycStatus
+      responses:
+        '200':
+          description: KYC status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [none, pending, verified, rejected]
+                  level:
+                    type: integer
+                    description: KYC level (1-3)
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        status:
+                          type: string
+                        submitted_at:
+                          type: string
+                          format: date-time
+
+    post:
+      tags: [Profile]
+      summary: Submit KYC documents
+      operationId: submitKyc
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document_type, document_front]
+              properties:
+                document_type:
+                  type: string
+                  enum: [bvn, nin, drivers_license, international_passport, voters_card]
+                document_number:
+                  type: string
+                document_front:
+                  type: string
+                  format: binary
+                document_back:
+                  type: string
+                  format: binary
+                selfie:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: KYC documents submitted for review
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ====================
+  # NOTIFICATIONS
+  # ====================
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Get notifications
+      operationId: getNotifications
+      parameters:
+        - name: read
+          in: query
+          description: Filter by read status
+          schema:
+            type: boolean
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [transaction, gig, savings, credit, system]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  unread_count:
+                    type: integer
+
+  /notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark notification as read
+      operationId: markNotificationRead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Notification marked as read
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      operationId: markAllNotificationsRead
+      responses:
+        '204':
+          description: All notifications marked as read
+
+  /notifications/settings:
+    get:
+      tags: [Notifications]
+      summary: Get notification settings
+      operationId: getNotificationSettings
+      responses:
+        '200':
+          description: Notification settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+
+    put:
+      tags: [Notifications]
+      summary: Update notification settings
+      operationId: updateNotificationSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSettings'
+      responses:
+        '200':
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+
+  # ====================
+  # WEBHOOKS
+  # ====================
+  /webhooks/paystack:
+    post:
+      tags: [Webhooks]
+      summary: Paystack webhook
+      description: |
+        Webhook endpoint for Paystack events.
+
+        Supported events:
+        - charge.success
+        - transfer.success
+        - transfer.failed
+        - transfer.reversed
+
+        Verify webhook signature using `X-Paystack-Signature` header.
+      operationId: paystackWebhook
+      security: []
+      parameters:
+        - name: X-Paystack-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Webhook processed
+        '400':
+          description: Invalid signature
+
+  # ====================
+  # HEALTH
+  # ====================
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Basic health check endpoint.
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+              example:
+                status: "healthy"
+                timestamp: "2024-01-15T10:00:00Z"
+                version: "1.0.0"
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      description: Check if service is ready to accept traffic.
+      operationId: readinessCheck
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+        '503':
+          description: Service is not ready
+
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      description: Check if service is alive.
+      operationId: livenessCheck
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+        '503':
+          description: Service is unhealthy
+
+# ====================
+# COMPONENTS
+# ====================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token
+
+  schemas:
+    # ====================
+    # Request Schemas
+    # ====================
+    RegisterRequest:
+      type: object
+      required: [phone, first_name, last_name]
+      properties:
+        phone:
+          type: string
+          pattern: '^0[789][01]\d{8}$'
+          description: Nigerian phone number (11 digits starting with 070, 080, 081, 090, 091)
+          example: "08012345678"
+        first_name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: "John"
+        last_name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        referral_code:
+          type: string
+          maxLength: 20
+          description: Referral code from another user
+
+    CreateGigRequest:
+      type: object
+      required: [title, description, category, budget_min, budget_max, duration_days]
+      properties:
+        title:
+          type: string
+          minLength: 10
+          maxLength: 100
+        description:
+          type: string
+          minLength: 50
+          maxLength: 5000
+        category:
+          type: string
+          enum: [tech, design, writing, marketing, video, audio, translation, data, admin, other]
+        budget_min:
+          type: number
+          minimum: 1000
+          description: Minimum budget in Naira
+        budget_max:
+          type: number
+          description: Maximum budget in Naira
+        duration_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+        deadline:
+          type: string
+          format: date
+        is_remote:
+          type: boolean
+          default: true
+        location:
+          type: string
+          maxLength: 100
+        skills:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+        attachments:
+          type: array
+          items:
+            type: string
+            format: uri
+          maxItems: 5
+
+    UpdateGigRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 10
+          maxLength: 100
+        description:
+          type: string
+          minLength: 50
+          maxLength: 5000
+        budget_min:
+          type: number
+        budget_max:
+          type: number
+        deadline:
+          type: string
+          format: date
+        skills:
+          type: array
+          items:
+            type: string
+
+    CreateProposalRequest:
+      type: object
+      required: [bid_amount, cover_letter, delivery_days]
+      properties:
+        bid_amount:
+          type: number
+          minimum: 1000
+        cover_letter:
+          type: string
+          minLength: 100
+          maxLength: 2000
+        delivery_days:
+          type: integer
+          minimum: 1
+        attachments:
+          type: array
+          items:
+            type: string
+            format: uri
+          maxItems: 5
+
+    CreateCircleRequest:
+      type: object
+      required: [name, type, contribution_amount, frequency, max_members]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 500
+        type:
+          type: string
+          enum: [ajo, esusu, goal]
+        contribution_amount:
+          type: number
+          minimum: 500
+          description: Contribution amount per cycle in Naira
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly]
+        max_members:
+          type: integer
+          minimum: 2
+          maximum: 50
+        is_private:
+          type: boolean
+          default: false
+        start_date:
+          type: string
+          format: date
+          description: When the circle should start (must be future date)
+        target_amount:
+          type: number
+          description: Required for esusu/goal types
+        duration_months:
+          type: integer
+          minimum: 1
+          maximum: 24
+          description: Required for esusu/goal types
+
+    LoanApplicationRequest:
+      type: object
+      required: [amount, tenor_months, purpose]
+      properties:
+        amount:
+          type: number
+          minimum: 5000
+          maximum: 500000
+          description: Loan amount in Naira
+        tenor_months:
+          type: integer
+          minimum: 1
+          maximum: 24
+        repayment_frequency:
+          type: string
+          enum: [weekly, biweekly, monthly]
+          default: monthly
+        purpose:
+          type: string
+          enum: [personal, business, education, medical, emergency, rent, other]
+        purpose_description:
+          type: string
+          maxLength: 500
+          description: Required if purpose is 'other'
+        employment_status:
+          type: string
+          enum: [employed, self_employed, freelancer, student, unemployed]
+        monthly_income:
+          type: number
+        guarantor_name:
+          type: string
+        guarantor_phone:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        last_name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        email:
+          type: string
+          format: email
+
+    # ====================
+    # Response Schemas
+    # ====================
+    RegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        otp_expires_at:
+          type: string
+          format: date-time
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Access token expiry in seconds
+        user:
+          $ref: '#/components/schemas/UserSummary'
+
+    WalletResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Wallet'
+
+    TransactionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    TransactionResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Transaction'
+
+    GigListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Gig'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    GigResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Gig'
+
+    # ====================
+    # Entity Schemas
+    # ====================
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        available_balance:
+          type: number
+          description: Available balance in Naira
+        escrow_balance:
+          type: number
+          description: Balance held in escrow
+        savings_balance:
+          type: number
+          description: Balance in savings circles
+        ledger_balance:
+          type: number
+          description: Total balance
+        currency:
+          type: string
+          enum: [NGN]
+          default: NGN
+        status:
+          type: string
+          enum: [active, locked, suspended]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [deposit, withdrawal, transfer_in, transfer_out, gig_payment, gig_earning, contribution, payout, loan_disbursement, loan_repayment]
+        amount:
+          type: number
+        fee:
+          type: number
+          default: 0
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed, reversed]
+        reference:
+          type: string
+        narration:
+          type: string
+        counterparty:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [user, bank, system]
+            name:
+              type: string
+            identifier:
+              type: string
+        balance_before:
+          type: number
+        balance_after:
+          type: number
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    BankAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        account_number:
+          type: string
+        account_name:
+          type: string
+        bank_code:
+          type: string
+        bank_name:
+          type: string
+        is_default:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    Gig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        budget_min:
+          type: number
+        budget_max:
+          type: number
+        duration_days:
+          type: integer
+        deadline:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [draft, active, in_progress, completed, cancelled, disputed]
+        is_remote:
+          type: boolean
+        location:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        attachments:
+          type: array
+          items:
+            type: string
+            format: uri
+        client:
+          $ref: '#/components/schemas/UserSummary'
+        freelancer:
+          $ref: '#/components/schemas/UserSummary'
+        proposals_count:
+          type: integer
+        views_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Proposal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        gig_id:
+          type: string
+          format: uuid
+        freelancer:
+          $ref: '#/components/schemas/UserSummary'
+        bid_amount:
+          type: number
+        cover_letter:
+          type: string
+        delivery_days:
+          type: integer
+        attachments:
+          type: array
+          items:
+            type: string
+            format: uri
+        status:
+          type: string
+          enum: [pending, accepted, rejected, withdrawn]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Contract:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        gig_id:
+          type: string
+          format: uuid
+        proposal_id:
+          type: string
+          format: uuid
+        client:
+          $ref: '#/components/schemas/UserSummary'
+        freelancer:
+          $ref: '#/components/schemas/UserSummary'
+        amount:
+          type: number
+        escrow_amount:
+          type: number
+        platform_fee:
+          type: number
+        delivery_days:
+          type: integer
+        start_date:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, active, completed, cancelled, disputed]
+        completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Circle:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [ajo, esusu, goal]
+        contribution_amount:
+          type: number
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly]
+        currency:
+          type: string
+          default: NGN
+        max_members:
+          type: integer
+        current_members:
+          type: integer
+        total_saved:
+          type: number
+        target_amount:
+          type: number
+        current_cycle:
+          type: integer
+        total_cycles:
+          type: integer
+        status:
+          type: string
+          enum: [pending, active, completed, cancelled]
+        is_private:
+          type: boolean
+        invite_code:
+          type: string
+        creator:
+          $ref: '#/components/schemas/UserSummary'
+        next_payout_member:
+          $ref: '#/components/schemas/UserSummary'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        next_contribution_date:
+          type: string
+          format: date
+        next_payout_date:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CircleMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        role:
+          type: string
+          enum: [admin, member]
+        status:
+          type: string
+          enum: [pending, active, defaulted, removed, left]
+        payout_order:
+          type: integer
+        has_received_payout:
+          type: boolean
+        total_contributed:
+          type: number
+        total_received:
+          type: number
+        contributions_made:
+          type: integer
+        contributions_missed:
+          type: integer
+        contribution_rate:
+          type: number
+        joined_at:
+          type: string
+          format: date-time
+        payout_date:
+          type: string
+          format: date
+
+    Contribution:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        circle_id:
+          type: string
+          format: uuid
+        member:
+          $ref: '#/components/schemas/UserSummary'
+        amount:
+          type: number
+        cycle_number:
+          type: integer
+        status:
+          type: string
+          enum: [pending, paid, overdue, missed]
+        due_date:
+          type: string
+          format: date-time
+        paid_at:
+          type: string
+          format: date-time
+        transaction_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    Payout:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        circle_id:
+          type: string
+          format: uuid
+        recipient:
+          $ref: '#/components/schemas/UserSummary'
+        amount:
+          type: number
+        cycle_number:
+          type: integer
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        scheduled_date:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+        transaction_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    SavingsStats:
+      type: object
+      properties:
+        total_saved:
+          type: number
+        active_circles:
+          type: integer
+        completed_circles:
+          type: integer
+        total_earned:
+          type: number
+        total_payouts_received:
+          type: number
+        contribution_rate:
+          type: number
+        total_contributions:
+          type: integer
+        missed_contributions:
+          type: integer
+
+    CreditScore:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 300
+          maximum: 850
+        tier:
+          type: string
+          enum: [poor, fair, good, excellent]
+        score_delta:
+          type: integer
+          description: Change from previous score
+        max_loan_amount:
+          type: number
+        factors:
+          type: object
+          properties:
+            payment_history:
+              type: integer
+            savings_consistency:
+              type: integer
+            gig_performance:
+              type: integer
+            account_age:
+              type: integer
+            wallet_activity:
+              type: integer
+            community_trust:
+              type: integer
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              score:
+                type: integer
+              date:
+                type: string
+                format: date
+        last_updated:
+          type: string
+          format: date-time
+        next_update:
+          type: string
+          format: date-time
+
+    LoanEligibility:
+      type: object
+      properties:
+        is_eligible:
+          type: boolean
+        max_amount:
+          type: number
+        suggested_amount:
+          type: number
+        interest_rate:
+          type: number
+        max_tenor_months:
+          type: integer
+        reason:
+          type: string
+          description: If not eligible, reason why
+        suggestions:
+          type: array
+          items:
+            type: string
+          description: Tips to improve eligibility
+
+    Loan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        principal_amount:
+          type: number
+        interest_rate:
+          type: number
+        total_amount:
+          type: number
+        amount_paid:
+          type: number
+        amount_remaining:
+          type: number
+        tenor_months:
+          type: integer
+        repayment_frequency:
+          type: string
+          enum: [weekly, biweekly, monthly]
+        purpose:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected, disbursed, active, overdue, defaulted, paid, cancelled]
+        application_date:
+          type: string
+          format: date-time
+        approval_date:
+          type: string
+          format: date-time
+        disbursement_date:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date
+        next_payment_date:
+          type: string
+          format: date
+        next_payment_amount:
+          type: number
+        payments_made:
+          type: integer
+        payments_total:
+          type: integer
+        days_overdue:
+          type: integer
+        rejection_reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LoanRepayment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        loan_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        principal_portion:
+          type: number
+        interest_portion:
+          type: number
+        installment_number:
+          type: integer
+        status:
+          type: string
+          enum: [pending, paid, overdue, missed, partial]
+        due_date:
+          type: string
+          format: date
+        paid_at:
+          type: string
+          format: date-time
+        transaction_id:
+          type: string
+          format: uuid
+        late_fee:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+    LoanOffer:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        min_amount:
+          type: number
+        max_amount:
+          type: number
+        interest_rate:
+          type: number
+        min_tenor_months:
+          type: integer
+        max_tenor_months:
+          type: integer
+        min_credit_score:
+          type: integer
+        processing_fee:
+          type: number
+        terms:
+          type: string
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        email:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+        has_pin:
+          type: boolean
+        biometric_enabled:
+          type: boolean
+        kyc_status:
+          type: string
+          enum: [none, pending, verified, rejected]
+        kyc_level:
+          type: integer
+        referral_code:
+          type: string
+        credit_score:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+        rating:
+          type: number
+        completed_gigs:
+          type: integer
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [transaction, gig, savings, credit, system]
+        title:
+          type: string
+        body:
+          type: string
+        data:
+          type: object
+        read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    NotificationSettings:
+      type: object
+      properties:
+        push_enabled:
+          type: boolean
+        email_enabled:
+          type: boolean
+        sms_enabled:
+          type: boolean
+        transaction_alerts:
+          type: boolean
+        gig_updates:
+          type: boolean
+        savings_reminders:
+          type: boolean
+        loan_reminders:
+          type: boolean
+        marketing:
+          type: boolean
+
+    Pagination:
+      type: object
+      properties:
+        next_cursor:
+          type: string
+          description: Cursor for next page
+        has_more:
+          type: boolean
+
+    ProblemDetails:
+      type: object
+      description: RFC 7807 Problem Details
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identifying the problem type
+        title:
+          type: string
+          description: Short human-readable summary
+        status:
+          type: integer
+          description: HTTP status code
+        detail:
+          type: string
+          description: Human-readable explanation
+        instance:
+          type: string
+          description: URI of the specific occurrence
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+          description: Field-level validation errors
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error or invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://api.hustlex.app/errors/validation"
+            title: "Validation Error"
+            status: 400
+            detail: "One or more fields failed validation"
+            errors:
+              amount: "Amount must be at least 100"
+              pin: "PIN must be 4 digits"
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://api.hustlex.app/errors/unauthorized"
+            title: "Unauthorized"
+            status: 401
+            detail: "Invalid or expired access token"
+
+    Forbidden:
+      description: Forbidden - authenticated but not authorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://api.hustlex.app/errors/not-found"
+            title: "Not Found"
+            status: 404
+            detail: "The requested resource was not found"
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when limit resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until next request allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://api.hustlex.app/errors/rate-limit"
+            title: "Too Many Requests"
+            status: 429
+            detail: "Rate limit exceeded. Try again in 60 seconds."

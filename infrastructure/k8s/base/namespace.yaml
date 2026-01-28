@@ -1,0 +1,134 @@
+# =============================================================================
+# HustleX Kubernetes Namespace and RBAC
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hustlex
+  labels:
+    app.kubernetes.io/name: hustlex
+    app.kubernetes.io/part-of: hustlex-platform
+
+---
+# Service Account for the API
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hustlex-api
+  namespace: hustlex
+  labels:
+    app.kubernetes.io/name: hustlex-api
+    app.kubernetes.io/component: api
+
+---
+# Role for API pod permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hustlex-api-role
+  namespace: hustlex
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hustlex-api-rolebinding
+  namespace: hustlex
+subjects:
+  - kind: ServiceAccount
+    name: hustlex-api
+    namespace: hustlex
+roleRef:
+  kind: Role
+  name: hustlex-api-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Network Policy - restrict traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hustlex-network-policy
+  namespace: hustlex
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow internal communication
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow internal communication
+    - to:
+        - podSelector: {}
+    # Allow external HTTPS (for payment gateways, SMS APIs)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Resource Quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: hustlex-quota
+  namespace: hustlex
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "50"
+    services: "20"
+    secrets: "50"
+    configmaps: "50"
+    persistentvolumeclaims: "20"
+
+---
+# Limit Range
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: hustlex-limits
+  namespace: hustlex
+spec:
+  limits:
+    - default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      type: Container

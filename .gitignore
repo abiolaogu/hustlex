@@ -1,0 +1,167 @@
+# =============================================================================
+# HustleX Pro Monorepo - Git Ignore
+# =============================================================================
+
+# =============================================================================
+# General
+# =============================================================================
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp
+*.temp
+.env
+.env.local
+.env.*.local
+
+# =============================================================================
+# Go
+# =============================================================================
+apps/api/bin/
+apps/api/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+go.work
+
+# =============================================================================
+# Flutter/Dart
+# =============================================================================
+# Dart/Flutter generated files
+**/build/
+**/.dart_tool/
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/pubspec.lock
+*.freezed.dart
+*.g.dart
+*.gr.dart
+*.config.dart
+*.mocks.dart
+
+# Flutter
+**/android/.gradle/
+**/android/local.properties
+**/android/.idea/
+**/android/key.properties
+**/android/app/debug/
+**/android/app/release/
+**/android/app/profile/
+**/ios/.symlinks/
+**/ios/Pods/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/App.framework
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/linux/flutter/
+**/macos/Flutter/
+**/windows/flutter/
+**/web/
+
+# Melos
+.melos_tool/
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# =============================================================================
+# JavaScript/TypeScript
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+coverage/
+.next/
+out/
+.nuxt/
+.cache/
+.parcel-cache/
+
+# =============================================================================
+# Infrastructure
+# =============================================================================
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Docker
+docker-compose.override.yml
+
+# Kubernetes
+**/k8s/secrets/
+
+# =============================================================================
+# IDE
+# =============================================================================
+*.iml
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# =============================================================================
+# Coverage
+# =============================================================================
+coverage/
+*.lcov
+.coverage
+htmlcov/
+
+# =============================================================================
+# Secrets (NEVER commit these)
+# =============================================================================
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+.secrets/
+credentials.json
+service-account.json

@@ -1,0 +1,2023 @@
+{
+  "info": {
+    "_postman_id": "hustlex-api-v1",
+    "name": "HustleX API v1",
+    "description": "Complete API collection for HustleX - Nigerian gig economy financial services platform.\n\n## Authentication\nMost endpoints require Bearer token authentication. Use the Login or Register endpoints to obtain tokens.\n\n## Environment Variables\n- `base_url`: API base URL\n- `access_token`: JWT access token\n- `refresh_token`: JWT refresh token\n- `user_id`: Current user ID\n- `wallet_id`: Current wallet ID\n\n## Rate Limits\n- Standard: 100 requests/minute\n- Auth: 10 requests/minute\n- Transactions: 30 requests/minute",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Generate idempotency key for POST/PUT requests",
+          "if (['POST', 'PUT', 'PATCH'].includes(pm.request.method)) {",
+          "    const idempotencyKey = pm.variables.get('idempotency_key') || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;",
+          "    pm.request.headers.add({",
+          "        key: 'X-Idempotency-Key',",
+          "        value: idempotencyKey",
+          "    });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Common response validation",
+          "pm.test('Response time is acceptable', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test('Response has valid JSON', function () {",
+          "    pm.response.to.be.json;",
+          "});",
+          "",
+          "// Check rate limit headers",
+          "pm.test('Rate limit headers present', function () {",
+          "    pm.expect(pm.response.headers.has('X-RateLimit-Limit')).to.be.true;",
+          "    pm.expect(pm.response.headers.has('X-RateLimit-Remaining')).to.be.true;",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.hustlex.ng/v1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "User authentication and session management endpoints",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains user data', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('user');",
+                  "    pm.expect(json.data.user).to.have.property('id');",
+                  "    pm.expect(json.data.user).to.have.property('phone');",
+                  "});",
+                  "",
+                  "// Save user ID for subsequent requests",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.user) {",
+                  "    pm.collectionVariables.set('user_id', json.data.user.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348012345678\",\n  \"email\": \"user@example.com\",\n  \"firstName\": \"Adebayo\",\n  \"lastName\": \"Okonkwo\",\n  \"password\": \"SecurePassword123!\",\n  \"referralCode\": \"REF123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Register a new user account. An OTP will be sent to the provided phone number for verification."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"phone\": \"+2348012345678\",\n  \"email\": \"user@example.com\",\n  \"firstName\": \"Adebayo\",\n  \"lastName\": \"Okonkwo\",\n  \"password\": \"SecurePassword123!\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/register",
+                  "host": ["{{base_url}}"],
+                  "path": ["auth", "register"]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"}
+              ],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"usr_abc123\",\n      \"phone\": \"+2348012345678\",\n      \"email\": \"user@example.com\",\n      \"firstName\": \"Adebayo\",\n      \"lastName\": \"Okonkwo\",\n      \"isPhoneVerified\": false,\n      \"isEmailVerified\": false,\n      \"kycLevel\": \"none\",\n      \"createdAt\": \"2024-01-15T10:30:00Z\"\n    },\n    \"otpSent\": true,\n    \"otpExpiresAt\": \"2024-01-15T10:35:00Z\"\n  }\n}"
+            },
+            {
+              "name": "Validation Error",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "body": "{\n  \"type\": \"https://api.hustlex.ng/errors/validation\",\n  \"title\": \"Validation Error\",\n  \"status\": 422,\n  \"detail\": \"One or more fields failed validation\",\n  \"instance\": \"/v1/auth/register\",\n  \"errors\": [\n    {\n      \"field\": \"phone\",\n      \"code\": \"INVALID_FORMAT\",\n      \"message\": \"Phone number must be a valid Nigerian number\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains tokens', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('accessToken');",
+                  "    pm.expect(json.data).to.have.property('refreshToken');",
+                  "});",
+                  "",
+                  "// Save tokens for subsequent requests",
+                  "const json = pm.response.json();",
+                  "if (json.data) {",
+                  "    pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348012345678\",\n  \"otp\": \"123456\",\n  \"type\": \"registration\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/verify-otp",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "verify-otp"]
+            },
+            "description": "Verify OTP sent during registration or login. Returns JWT tokens on success."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"accessToken\": \"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"refreshToken\": \"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"expiresIn\": 3600,\n    \"tokenType\": \"Bearer\",\n    \"user\": {\n      \"id\": \"usr_abc123\",\n      \"phone\": \"+2348012345678\",\n      \"isPhoneVerified\": true\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('OTP sent for verification', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data.otpSent).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348012345678\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Initiate login with phone and password. An OTP will be sent for 2FA verification."
+          },
+          "response": [
+            {
+              "name": "Success - OTP Sent",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"otpSent\": true,\n    \"otpExpiresAt\": \"2024-01-15T10:35:00Z\",\n    \"maskedPhone\": \"+234801****678\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data) {",
+                  "    pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Refresh access token using a valid refresh token."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Invalidate current session and refresh token."
+          },
+          "response": []
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348012345678\",\n  \"type\": \"registration\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/resend-otp",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "resend-otp"]
+            },
+            "description": "Resend OTP for verification. Rate limited to prevent abuse."
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348012345678\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "forgot-password"]
+            },
+            "description": "Initiate password reset. An OTP will be sent to the registered phone."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348012345678\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"NewSecurePassword456!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "reset-password"]
+            },
+            "description": "Complete password reset with OTP verification."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Transaction PIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pin\": \"1234\",\n  \"confirmPin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/pin",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "pin"]
+            },
+            "description": "Set transaction PIN for the first time. Required for financial transactions."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Transaction PIN",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPin\": \"1234\",\n  \"newPin\": \"5678\",\n  \"confirmPin\": \"5678\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/pin",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "pin"]
+            },
+            "description": "Change existing transaction PIN."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "description": "Wallet management, transactions, and banking operations",
+      "item": [
+        {
+          "name": "Get Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains balance data', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('available');",
+                  "    pm.expect(json.data).to.have.property('pending');",
+                  "    pm.expect(json.data).to.have.property('currency');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/balance",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "balance"]
+            },
+            "description": "Get current wallet balance including available and pending amounts."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"available\": 150000.00,\n    \"pending\": 25000.00,\n    \"locked\": 10000.00,\n    \"total\": 185000.00,\n    \"currency\": \"NGN\",\n    \"lastUpdated\": \"2024-01-15T10:30:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Transactions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains transactions array', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data.items).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/transactions?limit=20&type=credit&startDate=2024-01-01",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "transactions"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "type",
+                  "value": "credit",
+                  "description": "Filter: credit, debit, or all"
+                },
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01",
+                  "description": "Filter transactions from this date"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Pagination cursor"
+                }
+              ]
+            },
+            "description": "Get paginated transaction history with optional filters."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"txn_abc123\",\n        \"type\": \"credit\",\n        \"category\": \"gig_payment\",\n        \"amount\": 50000.00,\n        \"currency\": \"NGN\",\n        \"description\": \"Payment for Logo Design\",\n        \"reference\": \"GIG-2024-001\",\n        \"status\": \"completed\",\n        \"balanceAfter\": 150000.00,\n        \"metadata\": {\n          \"gigId\": \"gig_xyz789\",\n          \"clientName\": \"TechCorp Ltd\"\n        },\n        \"createdAt\": \"2024-01-15T10:30:00Z\"\n      }\n    ],\n    \"pagination\": {\n      \"hasMore\": true,\n      \"nextCursor\": \"eyJpZCI6InR4bl9hYmMxMjMifQ==\",\n      \"total\": 150\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Transaction Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/transactions/:transactionId",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "transactions", ":transactionId"],
+              "variable": [
+                {
+                  "key": "transactionId",
+                  "value": "txn_abc123"
+                }
+              ]
+            },
+            "description": "Get detailed information about a specific transaction."
+          },
+          "response": []
+        },
+        {
+          "name": "Initiate Deposit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "pm.test('Response contains payment reference', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('reference');",
+                  "    pm.expect(json.data).to.have.property('authorizationUrl');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10000.00,\n  \"channel\": \"card\",\n  \"saveCard\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/deposits",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "deposits"]
+            },
+            "description": "Initiate a wallet deposit via Paystack. Returns authorization URL for payment."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"reference\": \"DEP-2024-abc123\",\n    \"amount\": 10000.00,\n    \"currency\": \"NGN\",\n    \"channel\": \"card\",\n    \"authorizationUrl\": \"https://checkout.paystack.com/abc123xyz\",\n    \"accessCode\": \"abc123xyz\",\n    \"expiresAt\": \"2024-01-15T11:30:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify Deposit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/deposits/:reference/verify",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "deposits", ":reference", "verify"],
+              "variable": [
+                {
+                  "key": "reference",
+                  "value": "DEP-2024-abc123"
+                }
+              ]
+            },
+            "description": "Verify deposit status after Paystack callback."
+          },
+          "response": []
+        },
+        {
+          "name": "Initiate Withdrawal",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Withdrawal requires PIN verification",
+                  "console.log('Note: This endpoint requires transaction PIN');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Transaction-PIN",
+                "value": "{{transaction_pin}}",
+                "description": "Transaction PIN for authorization"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000.00,\n  \"bankAccountId\": \"ba_xyz789\",\n  \"narration\": \"Withdrawal to GTBank\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/withdrawals",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "withdrawals"]
+            },
+            "description": "Initiate withdrawal to linked bank account. Requires transaction PIN."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"id\": \"wth_abc123\",\n    \"reference\": \"WTH-2024-abc123\",\n    \"amount\": 50000.00,\n    \"fee\": 50.00,\n    \"netAmount\": 49950.00,\n    \"currency\": \"NGN\",\n    \"status\": \"processing\",\n    \"bankAccount\": {\n      \"bankName\": \"GTBank\",\n      \"accountNumber\": \"****5678\",\n      \"accountName\": \"Adebayo Okonkwo\"\n    },\n    \"estimatedArrival\": \"2024-01-15T12:00:00Z\",\n    \"createdAt\": \"2024-01-15T10:30:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Transfer Funds",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Transaction-PIN",
+                "value": "{{transaction_pin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipientId\": \"usr_recipient123\",\n  \"amount\": 5000.00,\n  \"narration\": \"Payment for services\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/transfers",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "transfers"]
+            },
+            "description": "Transfer funds to another HustleX user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Bank Accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/bank-accounts",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "bank-accounts"]
+            },
+            "description": "Get list of linked bank accounts."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"id\": \"ba_xyz789\",\n      \"bankCode\": \"058\",\n      \"bankName\": \"GTBank\",\n      \"accountNumber\": \"0123456789\",\n      \"accountName\": \"Adebayo Okonkwo\",\n      \"isDefault\": true,\n      \"isVerified\": true,\n      \"createdAt\": \"2024-01-10T08:00:00Z\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Add Bank Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bankCode\": \"058\",\n  \"accountNumber\": \"0123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/bank-accounts",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "bank-accounts"]
+            },
+            "description": "Add a new bank account. Account name is verified via NUBAN lookup."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Bank Account",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/bank-accounts/:accountId",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "bank-accounts", ":accountId"],
+              "variable": [
+                {
+                  "key": "accountId",
+                  "value": "ba_xyz789"
+                }
+              ]
+            },
+            "description": "Remove a linked bank account."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Banks List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallet/banks",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "banks"]
+            },
+            "description": "Get list of supported Nigerian banks."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\"code\": \"058\", \"name\": \"GTBank\"},\n    {\"code\": \"033\", \"name\": \"United Bank for Africa\"},\n    {\"code\": \"044\", \"name\": \"Access Bank\"},\n    {\"code\": \"011\", \"name\": \"First Bank of Nigeria\"},\n    {\"code\": \"057\", \"name\": \"Zenith Bank\"}\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify Account Number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bankCode\": \"058\",\n  \"accountNumber\": \"0123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/banks/verify-account",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "banks", "verify-account"]
+            },
+            "description": "Verify bank account number and get account name via NUBAN."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"accountNumber\": \"0123456789\",\n    \"accountName\": \"ADEBAYO OKONKWO\",\n    \"bankCode\": \"058\",\n    \"bankName\": \"GTBank\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Gigs",
+      "description": "Gig marketplace - create, browse, and manage freelance opportunities",
+      "item": [
+        {
+          "name": "Get Gigs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains gigs array', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data.items).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs?category=design&status=open&minBudget=10000&maxBudget=100000&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["gigs"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "design"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                },
+                {
+                  "key": "minBudget",
+                  "value": "10000"
+                },
+                {
+                  "key": "maxBudget",
+                  "value": "100000"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Browse available gigs with filters."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"gig_abc123\",\n        \"title\": \"Logo Design for Tech Startup\",\n        \"description\": \"Need a modern, minimalist logo...\",\n        \"category\": \"design\",\n        \"subcategory\": \"logo\",\n        \"budget\": {\n          \"min\": 50000,\n          \"max\": 100000,\n          \"currency\": \"NGN\",\n          \"type\": \"fixed\"\n        },\n        \"deadline\": \"2024-02-15\",\n        \"skills\": [\"Adobe Illustrator\", \"Figma\"],\n        \"status\": \"open\",\n        \"proposalCount\": 5,\n        \"client\": {\n          \"id\": \"usr_client123\",\n          \"name\": \"TechCorp Ltd\",\n          \"rating\": 4.8,\n          \"totalGigs\": 15\n        },\n        \"createdAt\": \"2024-01-15T10:00:00Z\"\n      }\n    ],\n    \"pagination\": {\n      \"hasMore\": true,\n      \"nextCursor\": \"eyJpZCI6ImdpZ19hYmMxMjMifQ==\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get My Gigs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs/my-gigs?role=client&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", "my-gigs"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "client",
+                  "description": "client or freelancer"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            },
+            "description": "Get gigs where user is client or freelancer."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Gig Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Get detailed information about a specific gig."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Gig",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Logo Design for Tech Startup\",\n  \"description\": \"Need a modern, minimalist logo for our fintech startup. Should work well on both light and dark backgrounds.\",\n  \"category\": \"design\",\n  \"subcategory\": \"logo\",\n  \"budget\": {\n    \"min\": 50000,\n    \"max\": 100000,\n    \"type\": \"fixed\"\n  },\n  \"deadline\": \"2024-02-15\",\n  \"skills\": [\"Adobe Illustrator\", \"Figma\"],\n  \"attachments\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gigs",
+              "host": ["{{base_url}}"],
+              "path": ["gigs"]
+            },
+            "description": "Create a new gig listing as a client."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Gig",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated: Logo Design for Tech Startup\",\n  \"budget\": {\n    \"min\": 60000,\n    \"max\": 120000\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Update gig details. Only allowed for open gigs."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Gig",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Project requirements changed\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "cancel"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Cancel an open gig."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Proposal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coverLetter\": \"I have 5 years of experience in logo design and have worked with several fintech companies...\",\n  \"bidAmount\": 75000,\n  \"estimatedDuration\": 7,\n  \"milestones\": [\n    {\n      \"title\": \"Initial Concepts\",\n      \"description\": \"3 logo concepts\",\n      \"amount\": 25000,\n      \"duration\": 3\n    },\n    {\n      \"title\": \"Revisions\",\n      \"description\": \"2 rounds of revisions\",\n      \"amount\": 25000,\n      \"duration\": 2\n    },\n    {\n      \"title\": \"Final Delivery\",\n      \"description\": \"All file formats\",\n      \"amount\": 25000,\n      \"duration\": 2\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "proposals"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Submit a proposal as a freelancer."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Proposals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "proposals"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Get proposals for a gig (client only)."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Proposal",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/proposals/:proposalId/accept",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "proposals", ":proposalId", "accept"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                },
+                {
+                  "key": "proposalId",
+                  "value": "prop_xyz789"
+                }
+              ]
+            },
+            "description": "Accept a proposal and create a contract."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/contract",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "contract"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Get contract details for a gig."
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Milestone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliverables\": \"https://drive.google.com/...\",\n  \"notes\": \"Completed all 3 initial concepts\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/milestones/:milestoneId/complete",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "milestones", ":milestoneId", "complete"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                },
+                {
+                  "key": "milestoneId",
+                  "value": "ms_abc123"
+                }
+              ]
+            },
+            "description": "Mark a milestone as complete (freelancer)."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Milestone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Transaction-PIN",
+                "value": "{{transaction_pin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/milestones/:milestoneId/approve",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "milestones", ":milestoneId", "approve"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                },
+                {
+                  "key": "milestoneId",
+                  "value": "ms_abc123"
+                }
+              ]
+            },
+            "description": "Approve milestone and release payment (client). Requires PIN."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Excellent work! Very professional and delivered on time.\",\n  \"aspects\": {\n    \"communication\": 5,\n    \"quality\": 5,\n    \"timeliness\": 5\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gigs/:gigId/reviews",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", ":gigId", "reviews"],
+              "variable": [
+                {
+                  "key": "gigId",
+                  "value": "gig_abc123"
+                }
+              ]
+            },
+            "description": "Submit a review for a completed gig."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gigs/categories",
+              "host": ["{{base_url}}"],
+              "path": ["gigs", "categories"]
+            },
+            "description": "Get list of gig categories and subcategories."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"id\": \"design\",\n      \"name\": \"Design & Creative\",\n      \"icon\": \"palette\",\n      \"subcategories\": [\n        {\"id\": \"logo\", \"name\": \"Logo Design\"},\n        {\"id\": \"ui_ux\", \"name\": \"UI/UX Design\"},\n        {\"id\": \"graphics\", \"name\": \"Graphics & Illustration\"}\n      ]\n    },\n    {\n      \"id\": \"development\",\n      \"name\": \"Development & IT\",\n      \"icon\": \"code\",\n      \"subcategories\": [\n        {\"id\": \"web\", \"name\": \"Web Development\"},\n        {\"id\": \"mobile\", \"name\": \"Mobile Apps\"},\n        {\"id\": \"backend\", \"name\": \"Backend Development\"}\n      ]\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Savings (Ajo/Esusu)",
+      "description": "Traditional rotating savings circles (Ajo/Esusu) - digital implementation",
+      "item": [
+        {
+          "name": "Get My Circles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/savings/circles?status=active",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            },
+            "description": "Get savings circles user is a member of."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"circle_abc123\",\n        \"name\": \"Tech Professionals Ajo\",\n        \"description\": \"Monthly savings for tech workers\",\n        \"contributionAmount\": 50000,\n        \"frequency\": \"monthly\",\n        \"memberCount\": 10,\n        \"maxMembers\": 12,\n        \"currentRound\": 3,\n        \"totalRounds\": 12,\n        \"status\": \"active\",\n        \"nextContributionDate\": \"2024-02-01\",\n        \"myPosition\": 5,\n        \"myTotalContributed\": 150000,\n        \"poolAmount\": 500000,\n        \"createdAt\": \"2024-01-01T00:00:00Z\"\n      }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Circle Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/savings/circles/:circleId",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles", ":circleId"],
+              "variable": [
+                {
+                  "key": "circleId",
+                  "value": "circle_abc123"
+                }
+              ]
+            },
+            "description": "Get detailed information about a savings circle."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Circle",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Friends Savings Group\",\n  \"description\": \"Monthly savings among friends\",\n  \"contributionAmount\": 25000,\n  \"frequency\": \"monthly\",\n  \"maxMembers\": 6,\n  \"startDate\": \"2024-02-01\",\n  \"isPrivate\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/savings/circles",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles"]
+            },
+            "description": "Create a new savings circle. Creator becomes admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Invite Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348098765432\",\n  \"message\": \"Join our savings circle!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/savings/circles/:circleId/invites",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles", ":circleId", "invites"],
+              "variable": [
+                {
+                  "key": "circleId",
+                  "value": "circle_abc123"
+                }
+              ]
+            },
+            "description": "Invite a user to join the savings circle."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Invite",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/savings/invites/:inviteId/accept",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "invites", ":inviteId", "accept"],
+              "variable": [
+                {
+                  "key": "inviteId",
+                  "value": "inv_xyz789"
+                }
+              ]
+            },
+            "description": "Accept an invitation to join a circle."
+          },
+          "response": []
+        },
+        {
+          "name": "Make Contribution",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Transaction-PIN",
+                "value": "{{transaction_pin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/savings/circles/:circleId/contributions",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles", ":circleId", "contributions"],
+              "variable": [
+                {
+                  "key": "circleId",
+                  "value": "circle_abc123"
+                }
+              ]
+            },
+            "description": "Make a contribution to the savings circle."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Contributions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/savings/circles/:circleId/contributions",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles", ":circleId", "contributions"],
+              "variable": [
+                {
+                  "key": "circleId",
+                  "value": "circle_abc123"
+                }
+              ]
+            },
+            "description": "Get contribution history for a circle."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Payouts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/savings/circles/:circleId/payouts",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "circles", ":circleId", "payouts"],
+              "variable": [
+                {
+                  "key": "circleId",
+                  "value": "circle_abc123"
+                }
+              ]
+            },
+            "description": "Get payout history and schedule for a circle."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Savings Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/savings/stats",
+              "host": ["{{base_url}}"],
+              "path": ["savings", "stats"]
+            },
+            "description": "Get user's overall savings statistics."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"totalSaved\": 450000,\n    \"totalReceived\": 200000,\n    \"activeCircles\": 3,\n    \"completedCircles\": 2,\n    \"currentMonthContributions\": 75000,\n    \"upcomingPayouts\": [\n      {\n        \"circleId\": \"circle_abc123\",\n        \"circleName\": \"Tech Professionals Ajo\",\n        \"amount\": 500000,\n        \"expectedDate\": \"2024-05-01\"\n      }\n    ]\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Credit",
+      "description": "Credit scoring, loan eligibility, and loan management",
+      "item": [
+        {
+          "name": "Get Credit Score",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/score",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "score"]
+            },
+            "description": "Get user's current credit score and breakdown."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"score\": 720,\n    \"maxScore\": 850,\n    \"rating\": \"good\",\n    \"lastUpdated\": \"2024-01-15T00:00:00Z\",\n    \"factors\": {\n      \"paymentHistory\": {\n        \"score\": 85,\n        \"weight\": 35,\n        \"description\": \"On-time payments\"\n      },\n      \"savingsHistory\": {\n        \"score\": 90,\n        \"weight\": 25,\n        \"description\": \"Consistent savings pattern\"\n      },\n      \"incomeStability\": {\n        \"score\": 75,\n        \"weight\": 20,\n        \"description\": \"Regular income from gigs\"\n      },\n      \"accountAge\": {\n        \"score\": 60,\n        \"weight\": 10,\n        \"description\": \"Account age: 8 months\"\n      },\n      \"platformActivity\": {\n        \"score\": 80,\n        \"weight\": 10,\n        \"description\": \"Active platform usage\"\n      }\n    },\n    \"tips\": [\n      \"Complete more gigs to improve income stability\",\n      \"Maintain your savings streak for 3 more months\"\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Check Loan Eligibility",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/eligibility",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "eligibility"]
+            },
+            "description": "Check user's loan eligibility and available offers."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"isEligible\": true,\n    \"maxAmount\": 500000,\n    \"suggestedAmount\": 200000,\n    \"interestRate\": 3.5,\n    \"maxTenorMonths\": 6,\n    \"availableOffers\": [\n      {\n        \"id\": \"offer_basic\",\n        \"name\": \"Quick Cash\",\n        \"minAmount\": 10000,\n        \"maxAmount\": 100000,\n        \"interestRate\": 5.0,\n        \"maxTenorMonths\": 3\n      },\n      {\n        \"id\": \"offer_standard\",\n        \"name\": \"Standard Loan\",\n        \"minAmount\": 50000,\n        \"maxAmount\": 500000,\n        \"interestRate\": 3.5,\n        \"maxTenorMonths\": 6\n      }\n    ],\n    \"suggestions\": [\n      \"Complete BVN verification for higher limits\",\n      \"Link a valid government ID\"\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Loan Offers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/offers",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "offers"]
+            },
+            "description": "Get available loan products."
+          },
+          "response": []
+        },
+        {
+          "name": "Apply for Loan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"offerId\": \"offer_standard\",\n  \"amount\": 150000,\n  \"tenorMonths\": 3,\n  \"purpose\": \"business\",\n  \"purposeDescription\": \"Purchase equipment for my design business\",\n  \"repaymentFrequency\": \"monthly\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/credit/loans",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "loans"]
+            },
+            "description": "Apply for a new loan."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"id\": \"loan_abc123\",\n    \"status\": \"pending\",\n    \"principalAmount\": 150000,\n    \"interestRate\": 3.5,\n    \"tenorMonths\": 3,\n    \"totalAmount\": 165750,\n    \"monthlyPayment\": 55250,\n    \"processingFee\": 1500,\n    \"purpose\": \"business\",\n    \"applicationDate\": \"2024-01-15T10:30:00Z\",\n    \"estimatedDecisionDate\": \"2024-01-15T11:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get My Loans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/loans?status=active",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "loans"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            },
+            "description": "Get user's loan history."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Loan Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/loans/:loanId",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "loans", ":loanId"],
+              "variable": [
+                {
+                  "key": "loanId",
+                  "value": "loan_abc123"
+                }
+              ]
+            },
+            "description": "Get detailed loan information including repayment schedule."
+          },
+          "response": []
+        },
+        {
+          "name": "Make Repayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Transaction-PIN",
+                "value": "{{transaction_pin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 55250,\n  \"source\": \"wallet\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/credit/loans/:loanId/repayments",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "loans", ":loanId", "repayments"],
+              "variable": [
+                {
+                  "key": "loanId",
+                  "value": "loan_abc123"
+                }
+              ]
+            },
+            "description": "Make a loan repayment."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Repayment Schedule",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/loans/:loanId/schedule",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "loans", ":loanId", "schedule"],
+              "variable": [
+                {
+                  "key": "loanId",
+                  "value": "loan_abc123"
+                }
+              ]
+            },
+            "description": "Get detailed repayment schedule for a loan."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Loan Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/credit/stats",
+              "host": ["{{base_url}}"],
+              "path": ["credit", "stats"]
+            },
+            "description": "Get user's loan statistics."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"totalBorrowed\": 500000,\n    \"totalRepaid\": 350000,\n    \"outstandingBalance\": 165750,\n    \"activeLoans\": 1,\n    \"completedLoans\": 2,\n    \"onTimePaymentRate\": 95.5,\n    \"averageLoanAmount\": 166666.67,\n    \"nextPaymentDate\": \"2024-02-01\",\n    \"nextPaymentAmount\": 55250\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "description": "User profile and KYC management",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": ["{{base_url}}"],
+              "path": ["profile"]
+            },
+            "description": "Get current user's profile."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"id\": \"usr_abc123\",\n    \"phone\": \"+2348012345678\",\n    \"email\": \"user@example.com\",\n    \"firstName\": \"Adebayo\",\n    \"lastName\": \"Okonkwo\",\n    \"avatar\": \"https://cdn.hustlex.ng/avatars/usr_abc123.jpg\",\n    \"isPhoneVerified\": true,\n    \"isEmailVerified\": true,\n    \"kycLevel\": \"tier2\",\n    \"kycStatus\": \"verified\",\n    \"hasPinSet\": true,\n    \"referralCode\": \"ADEB1234\",\n    \"stats\": {\n      \"gigsCompleted\": 15,\n      \"rating\": 4.8,\n      \"memberSince\": \"2023-06-15\"\n    },\n    \"createdAt\": \"2023-06-15T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Adebayo\",\n  \"lastName\": \"Okonkwo\",\n  \"email\": \"newemail@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": ["{{base_url}}"],
+              "path": ["profile"]
+            },
+            "description": "Update profile information."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Avatar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/profile/avatar",
+              "host": ["{{base_url}}"],
+              "path": ["profile", "avatar"]
+            },
+            "description": "Upload profile avatar image."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit BVN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bvn\": \"12345678901\",\n  \"dateOfBirth\": \"1990-05-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/profile/kyc/bvn",
+              "host": ["{{base_url}}"],
+              "path": ["profile", "kyc", "bvn"]
+            },
+            "description": "Submit BVN for verification (Tier 1 KYC)."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit NIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nin\": \"12345678901\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/profile/kyc/nin",
+              "host": ["{{base_url}}"],
+              "path": ["profile", "kyc", "nin"]
+            },
+            "description": "Submit NIN for verification."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload ID Document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "drivers_license",
+                  "type": "text"
+                },
+                {
+                  "key": "front",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "back",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/profile/kyc/document",
+              "host": ["{{base_url}}"],
+              "path": ["profile", "kyc", "document"]
+            },
+            "description": "Upload ID document for Tier 2 KYC."
+          },
+          "response": []
+        },
+        {
+          "name": "Get KYC Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/profile/kyc",
+              "host": ["{{base_url}}"],
+              "path": ["profile", "kyc"]
+            },
+            "description": "Get current KYC verification status."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "Push notifications and in-app notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications?unreadOnly=false&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["notifications"],
+              "query": [
+                {
+                  "key": "unreadOnly",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get user's notifications."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as Read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/:notificationId/read",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", ":notificationId", "read"],
+              "variable": [
+                {
+                  "key": "notificationId",
+                  "value": "notif_abc123"
+                }
+              ]
+            },
+            "description": "Mark a notification as read."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark All as Read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/read-all",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "read-all"]
+            },
+            "description": "Mark all notifications as read."
+          },
+          "response": []
+        },
+        {
+          "name": "Register Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"fcm_device_token_here\",\n  \"platform\": \"android\",\n  \"deviceId\": \"unique_device_id\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/notifications/devices",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "devices"]
+            },
+            "description": "Register device for push notifications."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Preferences",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pushEnabled\": true,\n  \"emailEnabled\": true,\n  \"categories\": {\n    \"transactions\": true,\n    \"gigs\": true,\n    \"savings\": true,\n    \"credit\": true,\n    \"marketing\": false\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/notifications/preferences",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "preferences"]
+            },
+            "description": "Update notification preferences."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "description": "Webhook endpoints for external integrations (Paystack)",
+      "item": [
+        {
+          "name": "Paystack Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Paystack-Signature",
+                "value": "{{paystack_signature}}",
+                "description": "HMAC SHA512 signature"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"charge.success\",\n  \"data\": {\n    \"id\": 123456789,\n    \"domain\": \"live\",\n    \"status\": \"success\",\n    \"reference\": \"DEP-2024-abc123\",\n    \"amount\": 1000000,\n    \"currency\": \"NGN\",\n    \"channel\": \"card\",\n    \"customer\": {\n      \"id\": 12345,\n      \"email\": \"user@example.com\"\n    },\n    \"paid_at\": \"2024-01-15T10:35:00.000Z\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/paystack",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "paystack"]
+            },
+            "description": "Paystack webhook endpoint. Verifies signature and processes payment events."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Webhook processed\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "description": "API health and status endpoints",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Basic health check endpoint."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"healthy\",\n  \"timestamp\": \"2024-01-15T10:30:00Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Detailed Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/detailed",
+              "host": ["{{base_url}}"],
+              "path": ["health", "detailed"]
+            },
+            "description": "Detailed health check with component status."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"healthy\",\n  \"version\": \"1.0.0\",\n  \"timestamp\": \"2024-01-15T10:30:00Z\",\n  \"components\": {\n    \"database\": \"healthy\",\n    \"redis\": \"healthy\",\n    \"paystack\": \"healthy\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

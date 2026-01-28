@@ -1,0 +1,102 @@
+name: hustlex_pro
+repository: https://github.com/abiolaogu/hustlex-pro
+
+packages:
+  - apps/consumer-app
+  - apps/provider-app
+  - packages/shared-domain
+  - packages/shared-ui
+
+ide:
+  intellij:
+    enabled: true
+
+command:
+  version:
+    # Generate commit links in package changelogs.
+    linkToCommits: true
+    # Only allow versioning to happen on main branch.
+    branch: main
+    # Additionally build a changelog at the root of the workspace.
+    workspaceChangelog: true
+
+  bootstrap:
+    # It seems so that running `weights` before `dart pub get` speeds up things.
+    runPubGetInParallel: true
+    # If a dependency is listed in pubspec_overrides.yaml, use it instead.
+    usePubspecOverrides: true
+
+scripts:
+  # Analyze all packages
+  analyze:
+    run: melos exec -- flutter analyze --fatal-infos
+    description: Run flutter analyze in all packages
+
+  # Format all packages
+  format:
+    run: melos exec -- dart format --set-exit-if-changed .
+    description: Format all packages
+
+  # Run tests in all packages
+  test:
+    run: melos exec -- flutter test
+    description: Run tests in all packages
+    packageFilters:
+      dirExists: test
+
+  # Generate code (freezed, json_serializable, etc.)
+  generate:
+    run: melos exec -- dart run build_runner build --delete-conflicting-outputs
+    description: Generate code in all packages
+    packageFilters:
+      dependsOn: build_runner
+
+  # Clean all packages
+  clean:
+    run: melos exec -- flutter clean
+    description: Clean all packages
+
+  # Get dependencies for all packages
+  get:
+    run: melos exec -- flutter pub get
+    description: Get dependencies for all packages
+
+  # Build consumer app for Android
+  build:consumer:android:
+    run: cd apps/consumer-app && flutter build apk --release
+    description: Build consumer app for Android
+
+  # Build consumer app for iOS
+  build:consumer:ios:
+    run: cd apps/consumer-app && flutter build ios --release --no-codesign
+    description: Build consumer app for iOS
+
+  # Build provider app for Android
+  build:provider:android:
+    run: cd apps/provider-app && flutter build apk --release
+    description: Build provider app for Android
+
+  # Build provider app for iOS
+  build:provider:ios:
+    run: cd apps/provider-app && flutter build ios --release --no-codesign
+    description: Build provider app for iOS
+
+  # Run consumer app
+  run:consumer:
+    run: cd apps/consumer-app && flutter run
+    description: Run consumer app
+
+  # Run provider app
+  run:provider:
+    run: cd apps/provider-app && flutter run
+    description: Run provider app
+
+  # Check outdated dependencies
+  outdated:
+    run: melos exec -- flutter pub outdated
+    description: Check outdated dependencies
+
+  # Upgrade dependencies
+  upgrade:
+    run: melos exec -- flutter pub upgrade
+    description: Upgrade dependencies

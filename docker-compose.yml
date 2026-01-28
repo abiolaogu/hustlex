@@ -1,0 +1,202 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Core Infrastructure
+  # =============================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: hustlex-postgres
+    environment:
+      POSTGRES_USER: hustlex
+      POSTGRES_PASSWORD: hustlex_dev_password
+      POSTGRES_DB: hustlex
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hustlex"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hustlex-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: hustlex-redis
+    command: redis-server --appendonly yes --requirepass hustlex_redis_password
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "hustlex_redis_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hustlex-network
+
+  # =============================================================================
+  # API Services
+  # =============================================================================
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: hustlex-api
+    environment:
+      - ENV=development
+      - DATABASE_URL=postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex?sslmode=disable
+      - REDIS_URL=redis://:hustlex_redis_password@redis:6379/0
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # ML/AI Services
+  # =============================================================================
+
+  recommendation:
+    build:
+      context: ./apps/recommendation
+      dockerfile: Dockerfile
+    container_name: hustlex-recommendation
+    environment:
+      - ENV=development
+      - DATABASE_URL=postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex?sslmode=disable
+      - REDIS_URL=redis://:hustlex_redis_password@redis:6379/1
+      - MODEL_PATH=/app/models
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/recommendation:/app
+      - ml_models:/app/models
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Admin Dashboard
+  # =============================================================================
+
+  admin-web:
+    build:
+      context: ./apps/admin-web
+      dockerfile: Dockerfile
+    container_name: hustlex-admin
+    environment:
+      - VITE_API_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/admin-web:/app
+      - /app/node_modules
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Monitoring & Observability
+  # =============================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: hustlex-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./infrastructure/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: hustlex-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./infrastructure/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Message Queue (for async processing)
+  # =============================================================================
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: hustlex-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: hustlex
+      RABBITMQ_DEFAULT_PASS: hustlex_rabbit_password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  hustlex-network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  ml_models:
+  prometheus_data:
+  grafana_data:
+  rabbitmq_data:

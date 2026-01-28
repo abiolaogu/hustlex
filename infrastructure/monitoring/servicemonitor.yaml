@@ -1,0 +1,41 @@
+# =============================================================================
+# HustleX ServiceMonitor
+# =============================================================================
+# Prometheus ServiceMonitor for automatic service discovery
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hustlex-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: hustlex
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hustlex
+      app.kubernetes.io/component: api
+  namespaceSelector:
+    matchNames:
+      - hustlex
+      - hustlex-staging
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+      honorLabels: true
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_version]
+          targetLabel: version
+      metricRelabelings:
+        # Drop high-cardinality metrics
+        - sourceLabels: [__name__]
+          regex: 'go_gc_.*'
+          action: drop

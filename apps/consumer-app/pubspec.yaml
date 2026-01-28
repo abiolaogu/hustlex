@@ -1,0 +1,127 @@
+name: hustlex
+description: Nigerian gig economy and social savings super app for millennials and Gen Z.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # Routing
+  go_router: ^13.0.1
+
+  # Network
+  dio: ^5.4.0
+  connectivity_plus: ^5.0.2
+
+  # Local Storage
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.2
+  hive_flutter: ^1.1.0
+
+  # UI Components
+  cupertino_icons: ^1.0.6
+  flutter_svg: ^2.0.9
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+  lottie: ^3.0.0
+  flutter_animate: ^4.3.0
+  
+  # Forms & Validation
+  flutter_form_builder: ^10.2.0
+  form_builder_validators: ^11.0.0
+  pin_code_fields: ^8.0.1
+  
+  # Utilities (intl version managed by SDK)
+  intl: any
+  url_launcher: ^6.2.2
+  share_plus: ^7.2.1
+  package_info_plus: ^5.0.1
+  device_info_plus: ^9.1.1
+  
+  # Notifications
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.10
+  flutter_local_notifications: ^16.3.0
+  
+  # Authentication
+  local_auth: ^2.1.8
+  
+  # Payments
+  # flutter_paystack has outdated dependencies, using webview for payments instead
+  webview_flutter: ^4.4.2
+  
+  # Image Handling
+  image_picker: ^1.0.7
+  image_cropper: ^5.0.1
+  
+  # Charts
+  fl_chart: ^0.66.0
+  
+  # Permissions
+  permission_handler: ^11.1.0
+  
+  # Fonts
+  google_fonts: ^6.1.0
+  
+  # Refresh
+  pull_to_refresh: ^2.0.0
+  
+  # Other
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.8.1
+  equatable: ^2.0.5
+  dartz: ^0.10.1
+  logger: ^2.0.2+1
+  uuid: ^4.2.2
+  flutter_dotenv: ^5.1.0
+  timeago: ^3.6.1
+
+  # Dependency Injection
+  injectable: ^2.3.2
+  get_it: ^7.6.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Code Generation
+  build_runner: ^2.4.7
+  freezed: ^2.4.6
+  json_serializable: ^6.7.1
+  riverpod_generator: ^2.3.9
+  injectable_generator: ^2.4.1
+
+  # Linting
+  flutter_lints: ^3.0.1
+  
+  # Testing
+  mockito: ^5.4.4
+  mocktail: ^1.0.2
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+    - .env
+    
+  fonts:
+    - family: HustleX
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700

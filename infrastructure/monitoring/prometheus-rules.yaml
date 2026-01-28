@@ -1,0 +1,353 @@
+# =============================================================================
+# HustleX Prometheus Alerting Rules
+# =============================================================================
+# Comprehensive monitoring alerts for production reliability
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hustlex-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: hustlex
+    prometheus: hustlex
+    role: alert-rules
+spec:
+  groups:
+    # =========================================================================
+    # Availability Alerts
+    # =========================================================================
+    - name: hustlex.availability
+      interval: 30s
+      rules:
+        - alert: HustleXAPIDown
+          expr: |
+            absent(up{job="hustlex-api"}) == 1
+            or sum(up{job="hustlex-api"}) == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API is down"
+            description: "No HustleX API pods are responding to health checks for more than 1 minute."
+            runbook_url: "https://docs.hustlex.ng/runbooks/api-down"
+
+        - alert: HustleXAPIHighLatency
+          expr: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="hustlex-api"}[5m])) by (le))
+            > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API high latency"
+            description: "95th percentile latency is above 500ms for the past 5 minutes. Current: {{ $value | humanizeDuration }}"
+
+        - alert: HustleXAPIVeryHighLatency
+          expr: |
+            histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="hustlex-api"}[5m])) by (le))
+            > 2
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API very high latency"
+            description: "99th percentile latency is above 2s for the past 5 minutes. Current: {{ $value | humanizeDuration }}"
+
+        - alert: HustleXAPIHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="hustlex-api",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="hustlex-api"}[5m]))
+            > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API high error rate"
+            description: "Error rate is above 5% for the past 5 minutes. Current: {{ $value | humanizePercentage }}"
+
+        - alert: HustleXAPIInsufficientReplicas
+          expr: |
+            kube_deployment_spec_replicas{deployment="hustlex-api"}
+            - kube_deployment_status_replicas_available{deployment="hustlex-api"}
+            > 0
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API has insufficient replicas"
+            description: "{{ $value }} replicas are unavailable for the hustlex-api deployment."
+
+    # =========================================================================
+    # Resource Alerts
+    # =========================================================================
+    - name: hustlex.resources
+      interval: 30s
+      rules:
+        - alert: HustleXAPIHighCPU
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{container="api",namespace="hustlex"}[5m])) by (pod)
+            /
+            sum(kube_pod_container_resource_limits{resource="cpu",container="api",namespace="hustlex"}) by (pod)
+            > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API high CPU usage"
+            description: "Pod {{ $labels.pod }} CPU usage is above 80% for 10 minutes. Current: {{ $value | humanizePercentage }}"
+
+        - alert: HustleXAPIHighMemory
+          expr: |
+            sum(container_memory_working_set_bytes{container="api",namespace="hustlex"}) by (pod)
+            /
+            sum(kube_pod_container_resource_limits{resource="memory",container="api",namespace="hustlex"}) by (pod)
+            > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API high memory usage"
+            description: "Pod {{ $labels.pod }} memory usage is above 85% for 10 minutes. Current: {{ $value | humanizePercentage }}"
+
+        - alert: HustleXAPICriticalMemory
+          expr: |
+            sum(container_memory_working_set_bytes{container="api",namespace="hustlex"}) by (pod)
+            /
+            sum(kube_pod_container_resource_limits{resource="memory",container="api",namespace="hustlex"}) by (pod)
+            > 0.95
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API critical memory usage"
+            description: "Pod {{ $labels.pod }} memory usage is above 95% for 5 minutes. OOM kill imminent!"
+
+        - alert: HustleXAPIPodRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{container="api",namespace="hustlex"}[1h])
+            > 3
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "HustleX API pod restarting frequently"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour."
+
+    # =========================================================================
+    # Business Alerts (Financial Transactions)
+    # =========================================================================
+    - name: hustlex.business
+      interval: 60s
+      rules:
+        - alert: HustleXHighFailedTransactions
+          expr: |
+            sum(rate(transaction_total{job="hustlex-api",status="failed"}[5m]))
+            /
+            sum(rate(transaction_total{job="hustlex-api"}[5m]))
+            > 0.1
+          for: 5m
+          labels:
+            severity: critical
+            team: payments
+            service: hustlex-api
+          annotations:
+            summary: "High failed transaction rate"
+            description: "Transaction failure rate is above 10% for 5 minutes. Current: {{ $value | humanizePercentage }}"
+
+        - alert: HustleXLowTransactionVolume
+          expr: |
+            sum(rate(transaction_total{job="hustlex-api"}[30m]))
+            < 0.1
+          for: 30m
+          labels:
+            severity: warning
+            team: payments
+            service: hustlex-api
+          annotations:
+            summary: "Low transaction volume"
+            description: "Transaction volume has been below expected levels for 30 minutes."
+
+        - alert: HustleXPaymentGatewayErrors
+          expr: |
+            sum(rate(payment_gateway_errors_total{job="hustlex-api"}[5m]))
+            > 0
+          for: 5m
+          labels:
+            severity: warning
+            team: payments
+            service: hustlex-api
+          annotations:
+            summary: "Payment gateway errors detected"
+            description: "Errors communicating with payment gateway (Paystack). Check connectivity."
+
+        - alert: HustleXHighWithdrawalVolume
+          expr: |
+            sum(rate(withdrawal_amount_total{job="hustlex-api"}[1h]))
+            > 10000000
+          for: 10m
+          labels:
+            severity: warning
+            team: risk
+            service: hustlex-api
+          annotations:
+            summary: "High withdrawal volume detected"
+            description: "Withdrawal volume exceeds 10M NGN in the last hour. Review for potential fraud."
+
+    # =========================================================================
+    # Security Alerts
+    # =========================================================================
+    - name: hustlex.security
+      interval: 30s
+      rules:
+        - alert: HustleXRateLimitExceeded
+          expr: |
+            sum(rate(rate_limit_exceeded_total{job="hustlex-api"}[5m])) by (endpoint)
+            > 10
+          for: 5m
+          labels:
+            severity: warning
+            team: security
+            service: hustlex-api
+          annotations:
+            summary: "Rate limit exceeded frequently"
+            description: "Endpoint {{ $labels.endpoint }} is hitting rate limits. Possible abuse attempt."
+
+        - alert: HustleXBruteForceAttempt
+          expr: |
+            sum(rate(auth_failures_total{job="hustlex-api",reason="invalid_credentials"}[5m])) by (ip)
+            > 20
+          for: 2m
+          labels:
+            severity: critical
+            team: security
+            service: hustlex-api
+          annotations:
+            summary: "Possible brute force attack"
+            description: "IP {{ $labels.ip }} has {{ $value }} failed auth attempts in 5 minutes."
+
+        - alert: HustleXSuspiciousActivity
+          expr: |
+            sum(rate(security_events_total{job="hustlex-api",type="suspicious"}[5m]))
+            > 0
+          for: 1m
+          labels:
+            severity: critical
+            team: security
+            service: hustlex-api
+          annotations:
+            summary: "Suspicious security activity detected"
+            description: "Security events flagged as suspicious are being logged. Investigate immediately."
+
+        - alert: HustleXUnauthorizedAccess
+          expr: |
+            sum(rate(http_requests_total{job="hustlex-api",status="403"}[5m])) by (path)
+            > 10
+          for: 5m
+          labels:
+            severity: warning
+            team: security
+            service: hustlex-api
+          annotations:
+            summary: "High unauthorized access attempts"
+            description: "Path {{ $labels.path }} receiving many 403 responses. Possible unauthorized access attempt."
+
+    # =========================================================================
+    # Database Alerts
+    # =========================================================================
+    - name: hustlex.database
+      interval: 30s
+      rules:
+        - alert: HustleXDBConnectionPoolExhausted
+          expr: |
+            db_pool_active_connections{job="hustlex-api"}
+            /
+            db_pool_max_connections{job="hustlex-api"}
+            > 0.9
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "Database connection pool nearly exhausted"
+            description: "Database connection pool is above 90% capacity. Current: {{ $value | humanizePercentage }}"
+
+        - alert: HustleXDBSlowQueries
+          expr: |
+            histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket{job="hustlex-api"}[5m])) by (le, query_type))
+            > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "Slow database queries detected"
+            description: "95th percentile query time for {{ $labels.query_type }} is above 1s."
+
+        - alert: HustleXDBConnectionErrors
+          expr: |
+            sum(rate(db_connection_errors_total{job="hustlex-api"}[5m]))
+            > 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "Database connection errors"
+            description: "Errors connecting to database. Check PostgreSQL health."
+
+    # =========================================================================
+    # Redis Alerts
+    # =========================================================================
+    - name: hustlex.redis
+      interval: 30s
+      rules:
+        - alert: HustleXRedisConnectionErrors
+          expr: |
+            sum(rate(redis_connection_errors_total{job="hustlex-api"}[5m]))
+            > 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "Redis connection errors"
+            description: "Errors connecting to Redis. Rate limiting and caching may be affected."
+
+        - alert: HustleXCacheMissRateHigh
+          expr: |
+            sum(rate(cache_misses_total{job="hustlex-api"}[5m]))
+            /
+            (sum(rate(cache_hits_total{job="hustlex-api"}[5m])) + sum(rate(cache_misses_total{job="hustlex-api"}[5m])))
+            > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            service: hustlex-api
+          annotations:
+            summary: "High cache miss rate"
+            description: "Cache miss rate is above 50%. Database load may increase."

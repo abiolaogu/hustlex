@@ -1,0 +1,60 @@
+# =============================================================================
+# HustleX Kubernetes Base Kustomization
+# =============================================================================
+# This is the base configuration that can be customized for different environments
+# using overlays (staging, production, etc.)
+#
+# Usage:
+#   kubectl apply -k k8s/base/
+#   kubectl apply -k k8s/overlays/production/
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: hustlex-base
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: hustlex-platform
+
+# Common annotations
+commonAnnotations:
+  app.kubernetes.io/version: "1.0.0"
+
+# Namespace for all resources
+namespace: hustlex
+
+# Resources to include
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - postgres.yaml
+  - redis.yaml
+  - deployment.yaml
+  - service.yaml
+
+# Config map generator (alternative to static configmap)
+# configMapGenerator:
+#   - name: hustlex-config
+#     envs:
+#       - config.env
+
+# Secret generator (alternative to static secrets)
+# secretGenerator:
+#   - name: hustlex-secrets
+#     envs:
+#       - secrets.env
+#     type: Opaque
+
+# Image configuration (can be overridden in overlays)
+images:
+  - name: hustlex/api
+    newTag: latest
+
+# Replicas configuration (can be overridden in overlays)
+replicas:
+  - name: hustlex-api
+    count: 3
