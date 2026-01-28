@@ -60,7 +60,7 @@ dependencies:
   
   # Image Handling
   image_picker: ^1.0.7
-  image_cropper: ^5.0.1
+  # image_cropper: ^5.0.1  # Disabled - has web compatibility issues
   
   # Charts
   fl_chart: ^0.66.0

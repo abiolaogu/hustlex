@@ -82,7 +82,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Python lib directories (scoped to avoid Flutter lib/)
+apps/recommendation/lib/
+apps/recommendation/lib64/
 lib64/
 parts/
 sdist/
