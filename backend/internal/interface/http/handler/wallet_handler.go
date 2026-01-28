@@ -7,6 +7,8 @@ import (
 	"hustlex/internal/application/wallet/command"
 	"hustlex/internal/application/wallet/handler"
 	"hustlex/internal/application/wallet/query"
+	"hustlex/internal/infrastructure/security/audit"
+	"hustlex/internal/infrastructure/security/validation"
 	"hustlex/internal/interface/http/middleware"
 	"hustlex/internal/interface/http/response"
 )
@@ -17,6 +19,7 @@ type WalletHandler struct {
 	withdrawHandler *handler.WithdrawHandler
 	transferHandler *handler.TransferHandler
 	queryHandler    *query.WalletQueryHandler
+	auditLogger     audit.AuditLogger
 }
 
 // NewWalletHandler creates a new wallet HTTP handler
@@ -25,12 +28,14 @@ func NewWalletHandler(
 	withdrawHandler *handler.WithdrawHandler,
 	transferHandler *handler.TransferHandler,
 	queryHandler *query.WalletQueryHandler,
+	auditLogger audit.AuditLogger,
 ) *WalletHandler {
 	return &WalletHandler{
 		depositHandler:  depositHandler,
 		withdrawHandler: withdrawHandler,
 		transferHandler: transferHandler,
 		queryHandler:    queryHandler,
+		auditLogger:     auditLogger,
 	}
 }
 
@@ -138,8 +143,17 @@ func (h *WalletHandler) InitiateDeposit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if req.Amount <= 0 {
-		response.ValidationError(w, map[string]string{"amount": "amount must be positive"})
+	// Input validation
+	v := validation.NewValidator()
+	v.Positive("amount", req.Amount).
+		Min("amount", req.Amount, 100).           // Minimum 100 kobo (1 Naira)
+		Max("amount", req.Amount, 100000000).     // Maximum 1M Naira
+		OneOf("currency", req.Currency, []string{"NGN", "USD", ""}).
+		SafeString("description", req.Description).
+		SafeString("reference", req.Reference)
+
+	if v.HasErrors() {
+		response.ValidationError(w, v.Errors().Errors)
 		return
 	}
 
@@ -166,8 +180,36 @@ func (h *WalletHandler) InitiateDeposit(w http.ResponseWriter, r *http.Request) 
 		Channel:     req.Channel,
 		RequestedBy: userID.String(),
 	})
+
+	// Audit log the deposit attempt
+	if h.auditLogger != nil {
+		outcome := audit.OutcomeSuccess
+		message := "Deposit initiated successfully"
+		if err != nil {
+			outcome = audit.OutcomeFailure
+			message = "Deposit initiation failed"
+		}
+		h.auditLogger.LogTransaction(r.Context(), audit.AuditEvent{
+			EventAction:    audit.ActionCreate,
+			EventOutcome:   outcome,
+			ActorUserID:    userID.String(),
+			ActorIPAddress: getClientIP(r),
+			ActorUserAgent: r.UserAgent(),
+			TargetType:     "wallet",
+			TargetID:       wallet.WalletID,
+			Message:        message,
+			Component:      "wallet_handler",
+			Metadata: map[string]interface{}{
+				"amount":    req.Amount,
+				"currency":  req.Currency,
+				"reference": req.Reference,
+				"channel":   req.Channel,
+			},
+		})
+	}
+
 	if err != nil {
-		response.BadRequest(w, err.Error())
+		response.BadRequest(w, "deposit initiation failed")
 		return
 	}
 
@@ -221,23 +263,21 @@ func (h *WalletHandler) InitiateWithdraw(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate required fields
-	errors := make(map[string]string)
-	if req.Amount <= 0 {
-		errors["amount"] = "amount must be positive"
-	}
-	if req.AccountNumber == "" {
-		errors["account_number"] = "account number is required"
-	}
-	if req.BankCode == "" {
-		errors["bank_code"] = "bank code is required"
-	}
-	if req.PIN == "" {
-		errors["pin"] = "PIN is required"
-	}
+	// Input validation with security checks
+	v := validation.NewValidator()
+	v.Required("account_number", req.AccountNumber).
+		Required("bank_code", req.BankCode).
+		Required("pin", req.PIN).
+		Positive("amount", req.Amount).
+		Min("amount", req.Amount, 100).           // Minimum 100 kobo
+		Max("amount", req.Amount, 100000000).     // Maximum 1M Naira
+		AccountNumber("account_number", req.AccountNumber).
+		BankCode("bank_code", req.BankCode).
+		PIN("pin", req.PIN).
+		SafeString("account_name", req.AccountName)
 
-	if len(errors) > 0 {
-		response.ValidationError(w, errors)
+	if v.HasErrors() {
+		response.ValidationError(w, v.Errors().Errors)
 		return
 	}
 
@@ -264,8 +304,37 @@ func (h *WalletHandler) InitiateWithdraw(w http.ResponseWriter, r *http.Request)
 		PIN:           req.PIN,
 		RequestedBy:   userID.String(),
 	})
+
+	// Audit log the withdrawal attempt (sensitive operation)
+	if h.auditLogger != nil {
+		outcome := audit.OutcomeSuccess
+		message := "Withdrawal initiated successfully"
+		if err != nil {
+			outcome = audit.OutcomeFailure
+			message = "Withdrawal initiation failed"
+		}
+		h.auditLogger.LogTransaction(r.Context(), audit.AuditEvent{
+			EventAction:    audit.ActionCreate,
+			EventOutcome:   outcome,
+			ActorUserID:    userID.String(),
+			ActorIPAddress: getClientIP(r),
+			ActorUserAgent: r.UserAgent(),
+			TargetType:     "wallet",
+			TargetID:       wallet.WalletID,
+			Message:        message,
+			Component:      "wallet_handler",
+			Metadata: map[string]interface{}{
+				"amount":            req.Amount,
+				"currency":          req.Currency,
+				"bank_code":         req.BankCode,
+				"account_number_masked": maskAccountNumber(req.AccountNumber),
+			},
+		})
+	}
+
 	if err != nil {
-		response.BadRequest(w, err.Error())
+		// Don't expose internal error details
+		response.BadRequest(w, "withdrawal request failed")
 		return
 	}
 
@@ -293,22 +362,24 @@ func (h *WalletHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate required fields
-	errors := make(map[string]string)
-	if req.Amount <= 0 {
-		errors["amount"] = "amount must be positive"
-	}
-	if req.RecipientPhone == "" {
-		errors["recipient_phone"] = "recipient phone is required"
-	}
-	if req.PIN == "" {
-		errors["pin"] = "PIN is required"
-	}
+	// Input validation with security checks
+	v := validation.NewValidator()
+	v.Required("recipient_phone", req.RecipientPhone).
+		Required("pin", req.PIN).
+		Positive("amount", req.Amount).
+		Min("amount", req.Amount, 100).           // Minimum 100 kobo
+		Max("amount", req.Amount, 100000000).     // Maximum 1M Naira
+		Phone("recipient_phone", req.RecipientPhone).
+		PIN("pin", req.PIN).
+		SafeString("description", req.Description)
 
-	if len(errors) > 0 {
-		response.ValidationError(w, errors)
+	if v.HasErrors() {
+		response.ValidationError(w, v.Errors().Errors)
 		return
 	}
+
+	// Normalize phone number
+	normalizedPhone := validation.NormalizePhone(req.RecipientPhone)
 
 	if req.Currency == "" {
 		req.Currency = "NGN"
@@ -316,15 +387,43 @@ func (h *WalletHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.transferHandler.Handle(r.Context(), command.Transfer{
 		FromUserID:  userID.String(),
-		ToUserPhone: req.RecipientPhone,
+		ToUserPhone: normalizedPhone,
 		Amount:      req.Amount,
 		Currency:    req.Currency,
 		Description: req.Description,
 		PIN:         req.PIN,
 		RequestedBy: userID.String(),
 	})
+
+	// Audit log the transfer attempt (sensitive operation)
+	if h.auditLogger != nil {
+		outcome := audit.OutcomeSuccess
+		message := "Transfer completed successfully"
+		if err != nil {
+			outcome = audit.OutcomeFailure
+			message = "Transfer failed"
+		}
+		h.auditLogger.LogTransaction(r.Context(), audit.AuditEvent{
+			EventAction:    audit.ActionCreate,
+			EventOutcome:   outcome,
+			ActorUserID:    userID.String(),
+			ActorIPAddress: getClientIP(r),
+			ActorUserAgent: r.UserAgent(),
+			TargetType:     "transfer",
+			TargetID:       "", // Transaction ID would be in result
+			Message:        message,
+			Component:      "wallet_handler",
+			Metadata: map[string]interface{}{
+				"amount":               req.Amount,
+				"currency":             req.Currency,
+				"recipient_phone_masked": maskPhone(normalizedPhone),
+			},
+		})
+	}
+
 	if err != nil {
-		response.BadRequest(w, err.Error())
+		// Don't expose internal error details
+		response.BadRequest(w, "transfer failed")
 		return
 	}
 
@@ -409,4 +508,53 @@ func parseIntQuery(s string, defaultVal int) int {
 
 func jsonParseInt(s string, v *int) (bool, error) {
 	return true, json.Unmarshal([]byte(s), v)
+}
+
+// getClientIP extracts the real client IP from request headers
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header (set by proxies)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the list
+		for i := 0; i < len(xff); i++ {
+			if xff[i] == ',' {
+				return xff[:i]
+			}
+		}
+		return xff
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	// Fall back to RemoteAddr
+	addr := r.RemoteAddr
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i] == ':' {
+			return addr[:i]
+		}
+	}
+	return addr
+}
+
+// maskAccountNumber masks an account number for audit logging
+// Shows only last 4 digits: ****1234
+func maskAccountNumber(accountNumber string) string {
+	if len(accountNumber) <= 4 {
+		return "****"
+	}
+	return "****" + accountNumber[len(accountNumber)-4:]
+}
+
+// maskPhone masks a phone number for audit logging
+// Shows only last 4 digits: +234****1234
+func maskPhone(phone string) string {
+	if len(phone) <= 4 {
+		return "****"
+	}
+	if len(phone) > 8 {
+		return phone[:4] + "****" + phone[len(phone)-4:]
+	}
+	return "****" + phone[len(phone)-4:]
 }
