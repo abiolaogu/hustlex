@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -954,10 +955,9 @@ func maskAccountNumber(accountNo string) string {
 	return "****" + accountNo[len(accountNo)-4:]
 }
 
-// Simple PIN verification (in production, use bcrypt)
+// verifyPIN securely compares the provided PIN against the bcrypt hash
 func verifyPIN(providedPIN, storedHash string) error {
-	// For now, simple comparison - in production use bcrypt.CompareHashAndPassword
-	if providedPIN != storedHash {
+	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(providedPIN)); err != nil {
 		return ErrInvalidPIN
 	}
 	return nil

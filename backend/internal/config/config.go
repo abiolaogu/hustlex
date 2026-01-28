@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -89,11 +91,38 @@ func Load() (*Config, error) {
 	// Load .env file if exists (for development)
 	_ = godotenv.Load()
 
+	environment := getEnv("ENVIRONMENT", "development")
+	isProduction := environment == "production"
+
+	// Validate required secrets in production
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if isProduction && jwtSecret == "" {
+		return nil, fmt.Errorf("JWT_SECRET environment variable is required in production")
+	}
+	if jwtSecret == "" {
+		jwtSecret = "dev-only-secret-do-not-use-in-production"
+	}
+
+	// Validate CORS origins - never allow wildcard in production
+	corsOrigins := getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080")
+	if isProduction && (corsOrigins == "*" || strings.Contains(corsOrigins, "*")) {
+		return nil, fmt.Errorf("CORS_ORIGINS cannot be wildcard (*) in production")
+	}
+
+	// Validate database password in production
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if isProduction && dbPassword == "" {
+		return nil, fmt.Errorf("DB_PASSWORD environment variable is required in production")
+	}
+	if dbPassword == "" {
+		dbPassword = "hustlex_password"
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
 			Port:         getEnv("SERVER_PORT", "8080"),
-			Environment:  getEnv("ENVIRONMENT", "development"),
-			AllowOrigins: getEnv("CORS_ORIGINS", "*"),
+			Environment:  environment,
+			AllowOrigins: corsOrigins,
 			RateLimit:    getEnvInt("RATE_LIMIT", 100),
 			ReadTimeout:  getEnvDuration("READ_TIMEOUT", 30*time.Second),
 			WriteTimeout: getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
@@ -102,7 +131,7 @@ func Load() (*Config, error) {
 			Host:         getEnv("DB_HOST", "localhost"),
 			Port:         getEnv("DB_PORT", "5432"),
 			User:         getEnv("DB_USER", "hustlex"),
-			Password:     getEnv("DB_PASSWORD", "hustlex_password"),
+			Password:     dbPassword,
 			DBName:       getEnv("DB_NAME", "hustlex"),
 			SSLMode:      getEnv("DB_SSL_MODE", "disable"),
 			MaxOpenConns: getEnvInt("DB_MAX_OPEN_CONNS", 25),
@@ -116,7 +145,7 @@ func Load() (*Config, error) {
 			DB:       getEnvInt("REDIS_DB", 0),
 		},
 		JWT: JWTConfig{
-			Secret:        getEnv("JWT_SECRET", "your-super-secret-key-change-in-production"),
+			Secret:        jwtSecret,
 			AccessExpiry:  getEnvDuration("JWT_ACCESS_EXPIRY", 15*time.Minute),
 			RefreshExpiry: getEnvDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 			Issuer:        getEnv("JWT_ISSUER", "hustlex"),

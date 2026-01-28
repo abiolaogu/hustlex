@@ -3,9 +3,12 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -110,9 +113,14 @@ func (s *AuthService) SendOTP(ctx context.Context, phone, purpose string) error 
 		return fmt.Errorf("failed to store OTP: %w", err)
 	}
 
-	// In production, send via SMS gateway here
-	// For development, log the OTP
-	fmt.Printf("📱 OTP for %s: %s (purpose: %s)\n", phone, code, purpose)
+	// Send OTP via SMS gateway (Termii, Africa's Talking, etc.)
+	// In development mode only, log to a secure audit log (never to stdout)
+	if os.Getenv("ENVIRONMENT") == "development" {
+		log.Printf("[DEV-ONLY] OTP generated for phone ending in %s", phone[len(phone)-4:])
+	}
+
+	// TODO: Integrate SMS gateway here
+	// Example: s.smsService.SendOTP(phone, code, purpose)
 
 	return nil
 }
@@ -138,8 +146,8 @@ func (s *AuthService) VerifyOTP(ctx context.Context, input *VerifyOTPInput) (*mo
 		return nil, errors.New("too many invalid attempts, please request a new OTP")
 	}
 
-	// Verify code
-	if otp.Code != input.Code {
+	// Verify code using constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(otp.Code), []byte(input.Code)) != 1 {
 		s.db.Model(&otp).Update("attempts", otp.Attempts+1)
 		return nil, errors.New("invalid OTP code")
 	}
