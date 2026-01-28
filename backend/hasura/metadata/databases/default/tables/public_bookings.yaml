@@ -1,0 +1,66 @@
+table:
+  name: bookings
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - consumer_id:
+              _eq: X-Hasura-User-Id
+          - provider_id:
+              _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        consumer_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - service_id
+        - provider_id
+        - scheduled_date
+        - scheduled_time_start
+        - scheduled_time_end
+        - service_address
+        - service_city
+        - service_state
+        - consumer_notes
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - scheduled_date
+        - scheduled_time_start
+        - scheduled_time_end
+        - consumer_notes
+        - provider_notes
+        - status
+      filter:
+        _or:
+          - consumer_id:
+              _eq: X-Hasura-User-Id
+          - provider_id:
+              _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: consumer
+    using:
+      foreign_key_constraint_on: consumer_id
+  - name: provider
+    using:
+      foreign_key_constraint_on: provider_id
+  - name: service
+    using:
+      foreign_key_constraint_on: service_id
+  - name: escrow_wallet
+    using:
+      foreign_key_constraint_on: escrow_wallet_id

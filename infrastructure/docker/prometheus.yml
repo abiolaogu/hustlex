@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'hustlex-api'
+    static_configs:
+      - targets: ['api:8081']
+    metrics_path: /metrics
+
+  - job_name: 'hasura'
+    static_configs:
+      - targets: ['hasura:8080']
+    metrics_path: /v1/metrics
+
+  - job_name: 'dragonfly'
+    static_configs:
+      - targets: ['dragonfly:6379']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']

@@ -1,0 +1,25 @@
+table:
+  name: transactions
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        wallet:
+          user_id:
+            _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: wallet
+    using:
+      foreign_key_constraint_on: wallet_id
+  - name: source_wallet
+    using:
+      foreign_key_constraint_on: source_wallet_id
+  - name: destination_wallet
+    using:
+      foreign_key_constraint_on: destination_wallet_id

@@ -1,0 +1,19 @@
+table:
+  name: currency_balances
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        multi_currency_wallet:
+          user_id:
+            _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: multi_currency_wallet
+    using:
+      foreign_key_constraint_on: multi_currency_wallet_id

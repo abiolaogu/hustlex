@@ -1,0 +1,79 @@
+table:
+  name: services
+  schema: public
+select_permissions:
+  - role: anonymous
+    permission:
+      columns: "*"
+      filter:
+        status:
+          _eq: active
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - status:
+              _eq: active
+          - provider_id:
+              _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        provider_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - category_id
+        - title
+        - description
+        - base_price
+        - currency
+        - pricing_type
+        - service_area
+        - is_remote_available
+        - images
+        - video_url
+        - tags
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - category_id
+        - title
+        - description
+        - base_price
+        - currency
+        - pricing_type
+        - service_area
+        - is_remote_available
+        - images
+        - video_url
+        - status
+        - tags
+      filter:
+        provider_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: provider
+    using:
+      foreign_key_constraint_on: provider_id
+  - name: category
+    using:
+      foreign_key_constraint_on: category_id
+array_relationships:
+  - name: bookings
+    using:
+      foreign_key_constraint_on:
+        column: service_id
+        table:
+          name: bookings
+          schema: public

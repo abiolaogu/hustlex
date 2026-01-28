@@ -1,0 +1,52 @@
+table:
+  name: circle_members
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - user_id:
+              _eq: X-Hasura-User-Id
+          - circle:
+              creator_id:
+                _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        circle:
+          creator_id:
+            _eq: X-Hasura-User-Id
+      columns:
+        - circle_id
+        - user_id
+        - payout_position
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - status
+      filter:
+        _or:
+          - user_id:
+              _eq: X-Hasura-User-Id
+          - circle:
+              creator_id:
+                _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: circle
+    using:
+      foreign_key_constraint_on: circle_id
+  - name: user
+    using:
+      foreign_key_constraint_on: user_id

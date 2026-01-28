@@ -1,0 +1,62 @@
+table:
+  name: savings_circles
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - creator_id:
+              _eq: X-Hasura-User-Id
+          - members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        creator_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - name
+        - description
+        - contribution_amount
+        - currency
+        - contribution_frequency
+        - max_members
+        - start_date
+        - late_fee_percentage
+        - allow_early_withdrawal
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - name
+        - description
+        - late_fee_percentage
+        - allow_early_withdrawal
+        - status
+      filter:
+        creator_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: creator
+    using:
+      foreign_key_constraint_on: creator_id
+array_relationships:
+  - name: members
+    using:
+      foreign_key_constraint_on:
+        column: circle_id
+        table:
+          name: circle_members
+          schema: public

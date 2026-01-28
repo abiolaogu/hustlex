@@ -1,0 +1,74 @@
+table:
+  name: users
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns:
+        - id
+        - email
+        - phone
+        - status
+        - role
+        - email_verified
+        - phone_verified
+        - created_at
+      filter:
+        id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: anonymous
+    permission:
+      check: {}
+      columns:
+        - email
+        - phone
+        - password_hash
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - email
+        - phone
+        - password_hash
+      filter:
+        id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: profile
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: profiles
+          schema: public
+array_relationships:
+  - name: wallets
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: wallets
+          schema: public
+  - name: beneficiaries
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: beneficiaries
+          schema: public
+  - name: remittances
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: remittances
+          schema: public

@@ -1,0 +1,80 @@
+table:
+  name: remittances
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - beneficiary_id
+        - source_wallet_id
+        - source_currency
+        - target_currency
+        - source_amount
+        - target_amount
+        - fx_rate
+        - fx_quote_id
+        - transfer_fee
+        - fx_fee
+        - total_fee
+        - total_source_amount
+        - purpose
+        - purpose_description
+        - delivery_method
+        - is_recurring
+        - recurrence_type
+        - recurrence_start_date
+        - recurrence_end_date
+        - payment_method
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - purpose_description
+        - status
+      filter:
+        _and:
+          - user_id:
+              _eq: X-Hasura-User-Id
+          - status:
+              _in:
+                - pending
+                - quoted
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: user
+    using:
+      foreign_key_constraint_on: user_id
+  - name: beneficiary
+    using:
+      foreign_key_constraint_on: beneficiary_id
+  - name: source_wallet
+    using:
+      foreign_key_constraint_on: source_wallet_id
+  - name: parent_remittance
+    using:
+      foreign_key_constraint_on: parent_remittance_id
+array_relationships:
+  - name: child_remittances
+    using:
+      foreign_key_constraint_on:
+        column: parent_remittance_id
+        table:
+          name: remittances
+          schema: public

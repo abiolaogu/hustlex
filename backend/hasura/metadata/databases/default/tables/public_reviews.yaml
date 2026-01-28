@@ -1,0 +1,59 @@
+table:
+  name: reviews
+  schema: public
+select_permissions:
+  - role: anonymous
+    permission:
+      columns: "*"
+      filter:
+        is_visible:
+          _eq: true
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        _or:
+          - is_visible:
+              _eq: true
+          - reviewer_id:
+              _eq: X-Hasura-User-Id
+          - reviewed_id:
+              _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        reviewer_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - reviewed_id
+        - booking_id
+        - rating
+        - title
+        - comment
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - response
+      filter:
+        reviewed_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: reviewer
+    using:
+      foreign_key_constraint_on: reviewer_id
+  - name: reviewed
+    using:
+      foreign_key_constraint_on: reviewed_id
+  - name: booking
+    using:
+      foreign_key_constraint_on: booking_id

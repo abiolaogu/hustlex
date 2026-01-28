@@ -25,12 +25,43 @@ services:
     networks:
       - hustlex-network
 
-  redis:
-    image: redis:7-alpine
-    container_name: hustlex-redis
-    command: redis-server --appendonly yes --requirepass hustlex_redis_password
+  # YugabyteDB - Distributed SQL database for global scale
+  yugabytedb:
+    image: yugabytedb/yugabyte:2.20.0.0-b76
+    container_name: hustlex-yugabytedb
+    command: >
+      bash -c "
+        bin/yugabyted start --daemon=false --tserver_flags='ysql_enable_auth=true'
+      "
+    environment:
+      YSQL_USER: hustlex
+      YSQL_PASSWORD: hustlex_yb_password
+      YSQL_DB: hustlex_distributed
     volumes:
-      - redis_data:/data
+      - yugabyte_data:/home/yugabyte/yb_data
+    ports:
+      - "5433:5433"   # YSQL (PostgreSQL-compatible)
+      - "9000:9000"   # YugabyteDB UI
+      - "7000:7000"   # Master RPC
+      - "9042:9042"   # YCQL (Cassandra-compatible)
+    healthcheck:
+      test: ["CMD", "bin/yugabyted", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - hustlex-network
+
+  # DragonflyDB - Drop-in Redis replacement with better performance
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: hustlex-dragonfly
+    command: >
+      --requirepass hustlex_redis_password
+      --maxmemory 512mb
+      --proactor_threads 2
+    volumes:
+      - dragonfly_data:/data
     ports:
       - "6379:6379"
     healthcheck:
@@ -40,6 +71,43 @@ services:
       retries: 5
     networks:
       - hustlex-network
+
+  # =============================================================================
+  # GraphQL & API Gateway
+  # =============================================================================
+
+  # Hasura GraphQL Engine
+  hasura:
+    image: hasura/graphql-engine:v2.36.0
+    container_name: hustlex-hasura
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ADMIN_SECRET: hustlex_hasura_admin_secret
+      HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"hustlex_jwt_secret_key_min_32_chars_long"}'
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      HASURA_GRAPHQL_CORS_DOMAIN: "*"
+      HASURA_GRAPHQL_ENABLE_REMOTE_SCHEMA_PERMISSIONS: "true"
+      HASURA_GRAPHQL_ENABLED_APIS: metadata,graphql,config,pgdump
+      # Event triggers and webhooks
+      HASURA_GRAPHQL_EVENTS_HTTP_POOL_SIZE: 100
+      # Action endpoints
+      ACTION_BASE_URL: http://api:8080/hasura/actions
+      # n8n webhook for workflows
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/hasura/metadata:/hasura-metadata
+      - ./backend/hasura/migrations:/hasura-migrations
+    networks:
+      - hustlex-network
+    restart: unless-stopped
 
   # =============================================================================
   # API Services
@@ -53,18 +121,62 @@ services:
     environment:
       - ENV=development
       - DATABASE_URL=postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex?sslmode=disable
-      - REDIS_URL=redis://:hustlex_redis_password@redis:6379/0
-      - JWT_SECRET=dev-jwt-secret-change-in-production
-      - PORT=8080
+      - YUGABYTE_URL=postgres://hustlex:hustlex_yb_password@yugabytedb:5433/hustlex_distributed?sslmode=disable
+      - REDIS_URL=redis://:hustlex_redis_password@dragonfly:6379/0
+      - HASURA_GRAPHQL_URL=http://hasura:8080/v1/graphql
+      - HASURA_ADMIN_SECRET=hustlex_hasura_admin_secret
+      - JWT_SECRET=hustlex_jwt_secret_key_min_32_chars_long
+      - PORT=8081
     ports:
-      - "8080:8080"
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      dragonfly:
         condition: service_healthy
+      hasura:
+        condition: service_started
     volumes:
       - ./apps/api:/app
+    networks:
+      - hustlex-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Workflow Automation
+  # =============================================================================
+
+  # n8n - Workflow automation for business processes
+  n8n:
+    image: n8nio/n8n:1.22.0
+    container_name: hustlex-n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=hustlex_n8n_password
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Africa/Lagos
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=hustlex_n8n
+      - DB_POSTGRESDB_USER=hustlex
+      - DB_POSTGRESDB_PASSWORD=hustlex_dev_password
+      # Execution settings
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+    ports:
+      - "5678:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./infrastructure/n8n/workflows:/home/node/.n8n/workflows:ro
     networks:
       - hustlex-network
     restart: unless-stopped
@@ -81,14 +193,14 @@ services:
     environment:
       - ENV=development
       - DATABASE_URL=postgres://hustlex:hustlex_dev_password@postgres:5432/hustlex?sslmode=disable
-      - REDIS_URL=redis://:hustlex_redis_password@redis:6379/1
+      - REDIS_URL=redis://:hustlex_redis_password@dragonfly:6379/1
       - MODEL_PATH=/app/models
     ports:
-      - "8081:8081"
+      - "8082:8081"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      dragonfly:
         condition: service_healthy
     volumes:
       - ./apps/recommendation:/app
@@ -107,11 +219,14 @@ services:
       dockerfile: Dockerfile
     container_name: hustlex-admin
     environment:
-      - VITE_API_URL=http://localhost:8080
+      - VITE_API_URL=http://localhost:8081
+      - VITE_GRAPHQL_URL=http://localhost:8080/v1/graphql
+      - VITE_HASURA_ADMIN_SECRET=hustlex_hasura_admin_secret
     ports:
       - "3000:3000"
     depends_on:
       - api
+      - hasura
     volumes:
       - ./apps/admin-web:/app
       - /app/node_modules
@@ -195,7 +310,9 @@ networks:
 
 volumes:
   postgres_data:
-  redis_data:
+  yugabyte_data:
+  dragonfly_data:
+  n8n_data:
   ml_models:
   prometheus_data:
   grafana_data:

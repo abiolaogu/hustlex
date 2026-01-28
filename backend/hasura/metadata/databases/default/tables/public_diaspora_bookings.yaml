@@ -1,0 +1,67 @@
+table:
+  name: diaspora_bookings
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - beneficiary_id
+        - service_provider_id
+        - type
+        - description
+        - source_currency
+        - target_currency
+        - source_amount
+        - target_amount
+        - fee
+        - fee_currency
+        - total_source_amount
+        - service_date
+        - service_address
+        - service_city
+        - service_state
+        - service_notes
+        - metadata
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - service_notes
+        - status
+      filter:
+        _and:
+          - user_id:
+              _eq: X-Hasura-User-Id
+          - status:
+              _in:
+                - pending
+                - quoted
+                - confirmed
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+object_relationships:
+  - name: user
+    using:
+      foreign_key_constraint_on: user_id
+  - name: beneficiary
+    using:
+      foreign_key_constraint_on: beneficiary_id
+  - name: service_provider
+    using:
+      foreign_key_constraint_on: service_provider_id

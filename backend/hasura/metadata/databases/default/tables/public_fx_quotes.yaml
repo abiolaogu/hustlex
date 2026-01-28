@@ -1,0 +1,12 @@
+table:
+  name: fx_quotes
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter: {}
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}

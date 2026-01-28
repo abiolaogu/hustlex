@@ -1,0 +1,53 @@
+table:
+  name: service_categories
+  schema: public
+select_permissions:
+  - role: anonymous
+    permission:
+      columns: "*"
+      filter:
+        is_active:
+          _eq: true
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        is_active:
+          _eq: true
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}
+object_relationships:
+  - name: parent
+    using:
+      foreign_key_constraint_on: parent_id
+array_relationships:
+  - name: children
+    using:
+      foreign_key_constraint_on:
+        column: parent_id
+        table:
+          name: service_categories
+          schema: public
+  - name: services
+    using:
+      foreign_key_constraint_on:
+        column: category_id
+        table:
+          name: services
+          schema: public
