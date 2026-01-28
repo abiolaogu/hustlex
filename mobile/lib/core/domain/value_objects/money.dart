@@ -101,6 +101,9 @@ class Money extends ValueObject<int> {
   /// Returns amount in major units (e.g., Naira)
   double get amountInMajorUnits => getOrCrash() / 100;
 
+  /// Alias for amountInMajorUnits for convenience
+  double get amount => amountInMajorUnits;
+
   /// Formatted string with currency symbol (e.g., "₦1,000.00")
   String get formatted {
     final amount = amountInMajorUnits;

@@ -76,8 +76,5 @@ class NoParams {
   const NoParams();
 }
 
-/// Unit type for use cases that don't return a value.
-///
-/// Example: DeleteUser returns Either<Failure, Unit>
-typedef Unit = void;
-const unit = null;
+// Note: Use Unit from dartz package for use cases that don't return a value.
+// Example: DeleteUser returns Either<Failure, Unit>

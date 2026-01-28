@@ -7,7 +7,20 @@
 /// - Use Cases: Business operations
 library;
 
-export 'entities/base_entity.dart';
-export 'failures/failures.dart';
+// Entities
+export 'entities/entity.dart';
+
+// Failures
+export 'failures/failure.dart';
+export 'failures/value_failures.dart';
+
+// Use cases
 export 'usecases/usecase.dart';
-export 'value_objects/value_objects.dart';
+
+// Value objects
+export 'value_objects/value_object.dart';
+export 'value_objects/money.dart';
+export 'value_objects/phone_number.dart';
+export 'value_objects/email.dart';
+export 'value_objects/pin.dart';
+export 'value_objects/bvn.dart';

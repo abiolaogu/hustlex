@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 import '../../../../core/domain/failures/failure.dart';
+import '../../../../core/domain/failures/value_failures.dart';
 import '../../../../core/domain/usecases/usecase.dart';
 import '../../../../core/domain/value_objects/money.dart';
 import '../../../../core/domain/value_objects/pin.dart';
