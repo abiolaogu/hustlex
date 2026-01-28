@@ -165,3 +165,4 @@ secrets/
 .secrets/
 credentials.json
 service-account.json
+.flutter-plugins-dependencies

@@ -1,0 +1,15 @@
+name: hustlex_pro_workspace
+description: HustleX Pro monorepo workspace
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+melos:
+  name: hustlex_pro
+  packages:
+    - apps/consumer-app
+    - apps/provider-app
+    - packages/shared-domain
+    - packages/shared-ui
