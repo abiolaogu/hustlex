@@ -1,230 +1,236 @@
 # HustleX Pro
 
-> Unified platform for gig economy financial services and AI-powered service marketplace
+> Unified platform combining gig marketplace, fintech, and diaspora services for the African market.
 
-[![CI/CD](https://github.com/abiolaogu/hustlex-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/abiolaogu/hustlex-pro/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8.svg)](https://golang.org/)
+[![Flutter Version](https://img.shields.io/badge/flutter-3.16+-02569B.svg)](https://flutter.dev/)
 
 ## Overview
 
-HustleX Pro is a comprehensive monorepo combining:
+HustleX Pro is a comprehensive monorepo containing all components of the HustleX platform:
 
-- **HustleX** - Gig economy financial services (wallet, savings circles, micro-loans)
-- **VendorPlatform** - AI-powered service marketplace with intelligent matching
+- **Gig Marketplace**: Connect service providers with consumers
+- **Fintech**: Multi-currency wallets, payments, and transactions
+- **Diaspora Services**: International remittances with competitive FX rates
+- **Savings Circles**: Traditional Ajo/Esusu digitized
 
 ## Architecture
 
 ```
 hustlex-pro/
 ├── apps/
-│   ├── api/                 # Go backend (unified API)
-│   ├── consumer-app/        # Flutter app for consumers
-│   ├── provider-app/        # Flutter app for service providers
-│   ├── admin-web/           # React admin dashboard
-│   └── recommendation/      # Python ML recommendation service
+│   ├── api/                 # Go backend (Clean Architecture)
+│   ├── consumer-app/        # Flutter consumer app
+│   ├── admin-web/           # React admin dashboard (Refine v4)
+│   ├── android/             # Native Android (Jetpack Compose)
+│   └── ios/                 # Native iOS (SwiftUI)
 ├── packages/
-│   ├── shared-domain/       # Shared Dart domain models
-│   ├── shared-ui/           # Shared Flutter widgets
-│   ├── go-common/           # Shared Go packages
-│   └── proto/               # gRPC/protobuf definitions
+│   ├── shared-domain/       # Shared domain models (Dart)
+│   └── shared-ui/           # Shared UI components (Dart)
+├── backend/
+│   └── hasura/              # Hasura GraphQL metadata & migrations
 ├── infrastructure/
 │   ├── docker/              # Docker configurations
-│   ├── k8s/                 # Kubernetes manifests
-│   └── terraform/           # Infrastructure as Code
-└── docs/
-    ├── architecture/        # Architecture decisions
-    ├── api/                 # API documentation
-    └── business/            # Business documentation
+│   ├── vas/                 # VAS (USSD/SMS/IVR) - Project Catalyst
+│   └── n8n/                 # Workflow automation
+└── global-fintech/          # Fintech submodule
 ```
 
-## Features
+## Tech Stack
 
-### Consumer App
-- Digital wallet with deposits, withdrawals, transfers
-- Gig marketplace for finding freelance work
-- Ajo/Esusu savings circles (traditional rotating savings)
-- Micro-loans with credit scoring
-- Real-time notifications
+### Backend
+- **Language**: Go 1.21+
+- **Architecture**: Clean Architecture, DDD
+- **Database**: PostgreSQL 16, YugabyteDB
+- **Cache**: DragonflyDB (Redis-compatible)
+- **GraphQL**: Hasura
+- **Messaging**: RabbitMQ
+- **Workflows**: n8n
 
-### Provider App
-- Service listing management
-- Booking and scheduling
-- Earnings tracking
-- Customer communication
-- Performance analytics
+### Mobile
+- **Flutter**: Ferry (GraphQL), Riverpod, GoRouter
+- **Android**: Jetpack Compose, Hilt, Apollo, Orbit MVI
+- **iOS**: SwiftUI, TCA, Apollo iOS
 
-### AI Features
-- Intelligent service provider matching
-- Dynamic pricing recommendations
-- Fraud detection
-- Credit risk assessment
-- Demand forecasting
+### Web
+- **Admin**: React, Refine v4, Ant Design
+
+### Infrastructure
+- **Container**: Docker, Kubernetes
+- **Monitoring**: Prometheus, Grafana
+- **VAS**: Project Catalyst (USSD, SMS, IVR)
 
 ## Quick Start
 
 ### Prerequisites
 
+- Docker & Docker Compose
 - Go 1.21+
 - Flutter 3.16+
-- Docker & Docker Compose
-- Node.js 18+ (for admin dashboard)
-- Python 3.11+ (for ML services)
+- Node.js 20+
 
-### Setup
+### Development Setup
+
+1. **Clone the repository with submodules**
+   ```bash
+   git clone --recurse-submodules https://github.com/abiolaogu/hustlex-pro.git
+   cd hustlex-pro
+   ```
+
+2. **Start infrastructure services**
+   ```bash
+   docker-compose up -d postgres dragonfly hasura
+   ```
+
+3. **Run the API**
+   ```bash
+   cd apps/api
+   go run cmd/server/main.go
+   ```
+
+4. **Run the Flutter app**
+   ```bash
+   cd apps/consumer-app/flutter
+   flutter run
+   ```
+
+5. **Run the admin dashboard**
+   ```bash
+   cd apps/admin-web
+   npm install
+   npm run dev
+   ```
+
+### Full Stack
 
 ```bash
-# Clone the repository
-git clone https://github.com/abiolaogu/hustlex-pro.git
-cd hustlex-pro
-
-# Install all dependencies
-make setup
-
-# Start infrastructure services
-make docker-up
-
-# Run database migrations
-make db-migrate
-
-# Start the API server
-make run-api
-
-# In separate terminals:
-make run-consumer    # Start consumer Flutter app
-make run-provider    # Start provider Flutter app
+docker-compose up
 ```
 
-### Using Melos (Flutter)
+Access services:
+- API: http://localhost:8081
+- Hasura Console: http://localhost:8080
+- Admin Dashboard: http://localhost:3000
+- n8n Workflows: http://localhost:5678
+- Grafana: http://localhost:3001
 
-```bash
-# Bootstrap all Flutter packages
-melos bootstrap
+## Features
 
-# Run tests across all packages
-melos run test
+### Gig Marketplace
+- Service provider profiles and portfolios
+- Service discovery and booking
+- Real-time availability
+- Escrow payments
+- Reviews and ratings
 
-# Generate code (freezed, json_serializable)
-melos run generate
+### Fintech
+- Multi-currency wallets (NGN, GBP, USD, EUR, CAD, GHS, KES)
+- P2P transfers
+- Bill payments
+- Airtime/Data purchase
+- Transaction history
 
-# Analyze all packages
-melos run analyze
-```
+### Diaspora Services
+- International remittances
+- Competitive FX rates with transparent pricing
+- Multiple delivery methods (Bank, Mobile Wallet, Cash Pickup)
+- Beneficiary management
+- Recurring transfers
+- Remote service booking
+
+### Savings Circles (Ajo/Esusu)
+- Digital traditional savings
+- Automated contribution tracking
+- Payout scheduling
+- Default management
+
+### VAS (Value Added Services)
+- USSD banking (*347*123#)
+- SMS notifications
+- IVR support
+
+## Supported Corridors
+
+| From | To | Spread | Delivery |
+|------|----|---------|----|
+| 🇬🇧 GBP | 🇳🇬 NGN | 1.5% | 24h |
+| 🇺🇸 USD | 🇳🇬 NGN | 1.75% | 24h |
+| 🇪🇺 EUR | 🇳🇬 NGN | 1.75% | 24h |
+| 🇨🇦 CAD | 🇳🇬 NGN | 2.0% | 24h |
+| 🇬🇧 GBP | 🇬🇭 GHS | 2.0% | 24h |
+| 🇬🇧 GBP | 🇰🇪 KES | 2.25% | 1-2 days |
 
 ## Development
 
-### API Development
+### Generate a New Feature
 
 ```bash
-cd apps/api
+# Backend feature
+./scripts/generate-feature.sh backend notifications
 
-# Run with hot reload
-air
+# Flutter feature
+./scripts/generate-feature.sh flutter savings
 
-# Run tests
-go test -v ./...
+# Admin page
+./scripts/generate-feature.sh admin reports
 
-# Build binary
-go build -o bin/server cmd/server/main.go
+# Android feature
+./scripts/generate-feature.sh android loyalty
+
+# iOS feature
+./scripts/generate-feature.sh ios loyalty
 ```
 
-### Flutter Development
+### Run Tests
 
 ```bash
-# Consumer app
-cd apps/consumer-app
-flutter run
+# Backend
+cd apps/api && go test ./...
 
-# Provider app
-cd apps/provider-app
-flutter run
+# Flutter
+cd apps/consumer-app/flutter && flutter test
+
+# Admin
+cd apps/admin-web && npm test
 ```
 
-### ML Service Development
+### Database Migrations
 
 ```bash
-cd apps/recommendation
+# Apply migrations
+hasura migrate apply --database-name default
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run service
-uvicorn main:app --reload --port 8081
-```
-
-## Testing
-
-```bash
-# Run all tests
-make test
-
-# Run specific tests
-make test-api        # API tests
-make test-flutter    # Flutter tests
-make test-ml         # ML service tests
-```
-
-## Docker
-
-```bash
-# Start all services
-make docker-up
-
-# View logs
-make docker-logs
-
-# Stop services
-make docker-down
-
-# Rebuild images
-make docker-build
+# Create new migration
+hasura migrate create <name> --database-name default
 ```
 
 ## API Documentation
 
-- **OpenAPI Spec**: `docs/api/openapi.yaml`
-- **Postman Collection**: `docs/api/postman/`
-- **Swagger UI**: http://localhost:8080/swagger (when running)
-
-## Project Structure
-
-| Directory | Description |
-|-----------|-------------|
-| `apps/api` | Go backend with Clean Architecture |
-| `apps/consumer-app` | Consumer-facing Flutter application |
-| `apps/provider-app` | Provider-facing Flutter application |
-| `apps/admin-web` | React-based admin dashboard |
-| `apps/recommendation` | Python ML recommendation service |
-| `packages/shared-domain` | Shared Dart domain models |
-| `packages/shared-ui` | Shared Flutter UI components |
-| `packages/go-common` | Shared Go utilities |
-| `packages/proto` | Protocol buffer definitions |
-| `infrastructure/` | DevOps configurations |
-| `docs/` | Documentation |
+- GraphQL Playground: http://localhost:8080/console
+- REST API (Swagger): http://localhost:8081/swagger
 
 ## Contributing
 
-1. Create a feature branch from `main`
-2. Make your changes
-3. Run tests: `make test`
-4. Run linting: `make lint`
-5. Submit a pull request
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Backend | Go, Gin, GORM, PostgreSQL |
-| Mobile | Flutter, Riverpod, Freezed |
-| Web | React, TypeScript, TailwindCSS |
-| ML | Python, FastAPI, scikit-learn, PyTorch |
-| Infrastructure | Docker, Kubernetes, Terraform |
-| CI/CD | GitHub Actions |
-| Monitoring | Prometheus, Grafana |
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feat/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feat/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Global-FinTech](https://github.com/abiolaogu/Global-FinTech) - Core fintech APIs
+- [Project Catalyst](https://github.com/abiolaogu/Project-Catalyst) - VAS platform
+- [Hasura](https://hasura.io/) - GraphQL engine
+- [Refine](https://refine.dev/) - Admin framework
 
 ---
 
-Built with ❤️ for the Nigerian gig economy
+Built with ❤️ for the African diaspora
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>

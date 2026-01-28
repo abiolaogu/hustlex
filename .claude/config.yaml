@@ -1,0 +1,217 @@
+# HustleX Pro - Autonomous Code Generation Configuration
+# This file configures Claude Code for autonomous feature generation
+
+project:
+  name: hustlex-pro
+  version: 1.0.0-alpha
+  description: "Unified platform for gig marketplace, fintech, and diaspora services"
+
+# Code Generation Rules
+generation:
+  # Backend (Go)
+  backend:
+    language: go
+    module: "hustlex"
+    architecture: clean-architecture
+    patterns:
+      - domain-driven-design
+      - repository-pattern
+      - dependency-injection
+    structure:
+      domain: "apps/api/internal/domain"
+      infrastructure: "apps/api/internal/infrastructure"
+      handlers: "apps/api/internal/handlers"
+      middleware: "apps/api/internal/middleware"
+    conventions:
+      - "Use context.Context as first parameter"
+      - "Return errors as last return value"
+      - "Use uuid.UUID for IDs"
+      - "Use decimal.Decimal for money"
+      - "Use time.Time for timestamps"
+    testing:
+      framework: testify
+      coverage_threshold: 80
+      mocks: mockery
+
+  # Flutter (Consumer App)
+  flutter:
+    architecture: clean-architecture
+    state_management: riverpod
+    navigation: go_router
+    graphql: ferry
+    structure:
+      domain: "apps/consumer-app/flutter/lib/features/{feature}/domain"
+      data: "apps/consumer-app/flutter/lib/features/{feature}/data"
+      presentation: "apps/consumer-app/flutter/lib/features/{feature}/presentation"
+    conventions:
+      - "Use freezed for immutable models"
+      - "Use either_dart for error handling"
+      - "Use hooks_riverpod for state"
+    testing:
+      framework: flutter_test
+      coverage_threshold: 70
+      golden_tests: true
+
+  # React Admin (Web)
+  admin_web:
+    framework: refine-v4
+    ui: antd
+    graphql: hasura
+    structure:
+      pages: "apps/admin-web/src/pages"
+      providers: "apps/admin-web/src/providers"
+      components: "apps/admin-web/src/components"
+    conventions:
+      - "Use TypeScript strict mode"
+      - "Use functional components"
+      - "Use hooks for state"
+
+  # Android (Native)
+  android:
+    language: kotlin
+    architecture: mvi
+    di: hilt
+    graphql: apollo
+    ui: jetpack-compose
+    structure:
+      features: "apps/android/app/src/main/java/ng/hustlex/features"
+      core: "apps/android/app/src/main/java/ng/hustlex/core"
+      ui: "apps/android/app/src/main/java/ng/hustlex/ui"
+    conventions:
+      - "Use Orbit MVI for state"
+      - "Use sealed classes for state"
+      - "Use data classes for models"
+
+  # iOS (Native)
+  ios:
+    language: swift
+    architecture: tca
+    graphql: apollo
+    ui: swiftui
+    structure:
+      features: "apps/ios/HustleX/Features"
+      core: "apps/ios/HustleX/Core"
+      ui: "apps/ios/HustleX/UI"
+    conventions:
+      - "Use TCA Reducer protocol"
+      - "Use ViewStore for state"
+      - "Use Environment for dependencies"
+
+# Test Requirements
+testing:
+  required_for_pr: true
+  minimum_coverage: 70
+  types:
+    - unit
+    - integration
+    - e2e
+  frameworks:
+    go: ["testify", "gomock"]
+    flutter: ["flutter_test", "mockito"]
+    typescript: ["jest", "testing-library"]
+    kotlin: ["junit5", "mockk"]
+    swift: ["XCTest", "swift-testing"]
+
+# PR Template
+pull_request:
+  title_format: "{type}({scope}): {description}"
+  types:
+    - feat
+    - fix
+    - refactor
+    - docs
+    - test
+    - chore
+  required_sections:
+    - summary
+    - test_plan
+    - screenshots (for UI changes)
+  reviewers:
+    auto_assign: true
+    min_approvals: 1
+
+# Feature Generation Templates
+templates:
+  backend_feature:
+    files:
+      - "{domain}/entity/{name}.go"
+      - "{domain}/repository/{name}_repository.go"
+      - "{domain}/service/{name}_service.go"
+      - "{handlers}/{name}_handler.go"
+      - "{domain}/entity/{name}_test.go"
+      - "{domain}/service/{name}_service_test.go"
+
+  flutter_feature:
+    files:
+      - "{feature}/domain/entities/{name}.dart"
+      - "{feature}/domain/repositories/{name}_repository.dart"
+      - "{feature}/domain/usecases/{name}_usecases.dart"
+      - "{feature}/data/models/{name}_model.dart"
+      - "{feature}/data/repositories/{name}_repository_impl.dart"
+      - "{feature}/presentation/providers/{name}_provider.dart"
+      - "{feature}/presentation/screens/{name}_screen.dart"
+
+  admin_page:
+    files:
+      - "{pages}/{name}/index.tsx"
+      - "{pages}/{name}/list.tsx"
+      - "{pages}/{name}/show.tsx"
+      - "{pages}/{name}/edit.tsx"
+
+# Hasura Configuration
+hasura:
+  endpoint: "http://localhost:8080"
+  admin_secret: "hustlex_hasura_admin_secret"
+  auto_track_tables: true
+  generate_permissions: true
+
+# n8n Workflows
+n8n:
+  endpoint: "http://localhost:5678"
+  auto_activate: false
+  templates:
+    - user_onboarding
+    - booking_lifecycle
+    - remittance_tracking
+    - payment_reconciliation
+
+# Database Migrations
+migrations:
+  tool: hasura-cli
+  auto_apply: development
+  require_down: true
+
+# CI/CD
+ci:
+  provider: github-actions
+  stages:
+    - lint
+    - test
+    - build
+    - deploy
+  environments:
+    - development
+    - staging
+    - production
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+    port: 9090
+  grafana:
+    enabled: true
+    port: 3001
+    dashboards:
+      - api_metrics
+      - business_metrics
+      - infrastructure
+
+# Security
+security:
+  scan_dependencies: true
+  scan_secrets: true
+  owasp_compliance: true
+  rate_limiting:
+    enabled: true
+    default: "100/minute"
