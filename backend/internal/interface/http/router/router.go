@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"hustlex/internal/infrastructure/security/audit"
+	"hustlex/internal/infrastructure/security/ratelimit"
 	"hustlex/internal/interface/http/handler"
 	"hustlex/internal/interface/http/middleware"
 )
@@ -14,6 +16,11 @@ type Config struct {
 	AllowCredentials bool
 	RequestTimeout   time.Duration
 	RateLimiter      middleware.RateLimiter
+	AuditLogger      audit.AuditLogger
+	AuthRateLimiter  ratelimit.RateLimiter
+	TxnRateLimiter   ratelimit.RateLimiter
+	OTPRateLimiter   ratelimit.RateLimiter
+	PINRateLimiter   ratelimit.RateLimiter
 }
 
 // Handlers holds all HTTP handlers
@@ -49,20 +56,26 @@ func (r *Router) Setup() http.Handler {
 	// Apply global middleware
 	var handler http.Handler = r.mux
 
-	// Recovery from panics
-	handler = middleware.Recover(handler)
+	// Recovery from panics (enhanced with proper error handling)
+	handler = middleware.RecoverPanic(handler)
 
 	// Logging
 	handler = middleware.Logger(handler)
 
-	// Request ID
-	handler = middleware.RequestID(handler)
+	// Enhanced Request ID with correlation ID support
+	handler = middleware.EnhancedRequestID(handler)
 
-	// Security headers
-	handler = middleware.SecurityHeaders(handler)
+	// Request sanitization (blocks suspicious paths, validates content-type)
+	handler = middleware.RequestSanitizer(handler)
 
-	// CORS
-	handler = middleware.CORS(r.config.AllowedOrigins, r.config.AllowCredentials)(handler)
+	// Enhanced security headers (OWASP recommended)
+	handler = middleware.EnhancedSecurityHeaders(handler)
+
+	// Secure CORS with origin validation
+	handler = middleware.SecureCORS(r.config.AllowedOrigins)(handler)
+
+	// Secure JSON response handling
+	handler = middleware.SecureJSONResponse(handler)
 
 	// Content type
 	handler = middleware.ContentType(handler)
@@ -70,6 +83,11 @@ func (r *Router) Setup() http.Handler {
 	// Request timeout
 	if r.config.RequestTimeout > 0 {
 		handler = middleware.Timeout(r.config.RequestTimeout)(handler)
+	}
+
+	// Audit logging for compliance (if configured)
+	if r.config.AuditLogger != nil {
+		handler = middleware.AuditMiddleware(r.config.AuditLogger)(handler)
 	}
 
 	// Setup routes
@@ -101,12 +119,15 @@ func (r *Router) setupHealthRoutes() {
 
 // setupAuthRoutes configures authentication routes
 func (r *Router) setupAuthRoutes() {
-	// Public routes (no auth required)
-	r.mux.HandleFunc("POST /api/auth/otp/send", r.publicHandler(notImplemented))
-	r.mux.HandleFunc("POST /api/auth/otp/verify", r.publicHandler(notImplemented))
-	r.mux.HandleFunc("POST /api/auth/register", r.publicHandler(notImplemented))
-	r.mux.HandleFunc("POST /api/auth/login", r.publicHandler(notImplemented))
-	r.mux.HandleFunc("POST /api/auth/refresh", r.publicHandler(notImplemented))
+	// Public routes (no auth required) - with rate limiting
+	// OTP endpoints have strict rate limits to prevent abuse
+	r.mux.HandleFunc("POST /api/auth/otp/send", r.rateLimitedPublicHandler(r.config.OTPRateLimiter, notImplemented))
+	r.mux.HandleFunc("POST /api/auth/otp/verify", r.rateLimitedPublicHandler(r.config.OTPRateLimiter, notImplemented))
+
+	// Auth endpoints with standard auth rate limits
+	r.mux.HandleFunc("POST /api/auth/register", r.rateLimitedPublicHandler(r.config.AuthRateLimiter, notImplemented))
+	r.mux.HandleFunc("POST /api/auth/login", r.rateLimitedPublicHandler(r.config.AuthRateLimiter, notImplemented))
+	r.mux.HandleFunc("POST /api/auth/refresh", r.rateLimitedPublicHandler(r.config.AuthRateLimiter, notImplemented))
 
 	// Protected routes
 	r.mux.HandleFunc("POST /api/auth/logout", r.protectedHandler(notImplemented))
@@ -121,26 +142,26 @@ func (r *Router) setupWalletRoutes() {
 		return
 	}
 
-	// Wallet routes (protected)
+	// Wallet routes (protected) - read operations
 	r.mux.HandleFunc("GET /api/wallet", r.protectedHandler(r.handlers.Wallet.GetWallet))
 	r.mux.HandleFunc("GET /api/wallet/balance", r.protectedHandler(r.handlers.Wallet.GetBalance))
 	r.mux.HandleFunc("GET /api/wallet/transactions", r.protectedHandler(r.handlers.Wallet.GetTransactions))
 
-	// Deposit routes
-	r.mux.HandleFunc("POST /api/wallet/deposit/initiate", r.protectedHandler(r.handlers.Wallet.InitiateDeposit))
+	// Deposit routes - with transaction rate limiting
+	r.mux.HandleFunc("POST /api/wallet/deposit/initiate", r.rateLimitedProtectedHandler(r.config.TxnRateLimiter, r.handlers.Wallet.InitiateDeposit))
 	r.mux.HandleFunc("POST /api/wallet/deposit/verify", r.protectedHandler(r.handlers.Wallet.VerifyDeposit))
 
-	// Withdrawal routes
-	r.mux.HandleFunc("POST /api/wallet/withdraw", r.protectedHandler(r.handlers.Wallet.InitiateWithdraw))
+	// Withdrawal routes - with transaction rate limiting
+	r.mux.HandleFunc("POST /api/wallet/withdraw", r.rateLimitedProtectedHandler(r.config.TxnRateLimiter, r.handlers.Wallet.InitiateWithdraw))
 
-	// Transfer routes
-	r.mux.HandleFunc("POST /api/wallet/transfer", r.protectedHandler(r.handlers.Wallet.Transfer))
+	// Transfer routes - with transaction rate limiting and PIN rate limiting
+	r.mux.HandleFunc("POST /api/wallet/transfer", r.rateLimitedProtectedHandler(r.config.TxnRateLimiter, r.handlers.Wallet.Transfer))
 
 	// Bank routes
 	r.mux.HandleFunc("GET /api/wallet/banks", r.protectedHandler(r.handlers.Wallet.GetBanks))
 	r.mux.HandleFunc("POST /api/wallet/resolve-account", r.protectedHandler(r.handlers.Wallet.ResolveAccount))
 
-	// Webhook (public but validated)
+	// Webhook (public but validated via signature)
 	r.mux.HandleFunc("POST /api/webhook/paystack", r.publicHandler(notImplemented))
 }
 
@@ -284,6 +305,30 @@ func (r *Router) protectedHandler(h http.HandlerFunc) http.HandlerFunc {
 func (r *Router) optionalAuthHandler(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		r.auth.OptionalAuth(http.HandlerFunc(h)).ServeHTTP(w, req)
+	}
+}
+
+// rateLimitedPublicHandler applies rate limiting to public endpoints
+func (r *Router) rateLimitedPublicHandler(limiter ratelimit.RateLimiter, h http.HandlerFunc) http.HandlerFunc {
+	if limiter == nil {
+		return h
+	}
+	return func(w http.ResponseWriter, req *http.Request) {
+		ratelimit.RateLimitMiddleware(limiter, ratelimit.IPKeyFunc)(http.HandlerFunc(h)).ServeHTTP(w, req)
+	}
+}
+
+// rateLimitedProtectedHandler applies rate limiting to protected endpoints
+func (r *Router) rateLimitedProtectedHandler(limiter ratelimit.RateLimiter, h http.HandlerFunc) http.HandlerFunc {
+	if limiter == nil {
+		return r.protectedHandler(h)
+	}
+	return func(w http.ResponseWriter, req *http.Request) {
+		// First authenticate, then apply rate limit
+		authenticated := func(w http.ResponseWriter, req *http.Request) {
+			ratelimit.RateLimitMiddleware(limiter, ratelimit.IPKeyFunc)(http.HandlerFunc(h)).ServeHTTP(w, req)
+		}
+		r.auth.Authenticate(http.HandlerFunc(authenticated)).ServeHTTP(w, req)
 	}
 }
 
