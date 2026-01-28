@@ -287,7 +287,7 @@ class SavingsRepository extends BaseRepository {
   // Circle activity / history
 
   /// Get circle activity feed
-  Future<Result<List<Map<String, dynamic>>> getCircleActivity(
+  Future<Result<List<Map<String, dynamic>>>> getCircleActivity(
     String circleId, {
     int page = 1,
     int limit = 20,

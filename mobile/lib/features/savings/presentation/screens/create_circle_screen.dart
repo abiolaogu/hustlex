@@ -561,10 +561,6 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
               '$maxMembers ${_selectedFrequency.displayName.toLowerCase()}s',
             ),
           ] else ...[
-            final targetAmount = double.tryParse(
-              _targetAmountController.text.replaceAll(',', ''),
-            ) ?? totalPot;
-            final roundsNeeded = (targetAmount / totalPot).ceil();
             _buildEstimateRow(
               'Per member contribution',
               '₦${_formatAmount(contribution)} ${_selectedFrequency.displayName.toLowerCase()}',
@@ -575,7 +571,7 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
             ),
             _buildEstimateRow(
               'Estimated time to target',
-              '~$roundsNeeded ${_selectedFrequency.displayName.toLowerCase()}${roundsNeeded > 1 ? 's' : ''}',
+              '~${_calculateRoundsNeeded(totalPot)} ${_selectedFrequency.displayName.toLowerCase()}${_calculateRoundsNeeded(totalPot) > 1 ? 's' : ''}',
             ),
           ],
         ],
@@ -597,6 +593,14 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
         ],
       ),
     );
+  }
+
+  int _calculateRoundsNeeded(double totalPot) {
+    if (totalPot <= 0) return 1;
+    final targetAmount = double.tryParse(
+      _targetAmountController.text.replaceAll(',', ''),
+    ) ?? totalPot;
+    return (targetAmount / totalPot).ceil();
   }
 
   Widget _buildReviewStep() {

@@ -35,12 +35,12 @@ dependencies:
   flutter_animate: ^4.3.0
   
   # Forms & Validation
-  flutter_form_builder: ^9.2.0
-  form_builder_validators: ^9.1.0
+  flutter_form_builder: ^10.2.0
+  form_builder_validators: ^11.0.0
   pin_code_fields: ^8.0.1
   
-  # Utilities
-  intl: ^0.18.1
+  # Utilities (intl version managed by SDK)
+  intl: any
   url_launcher: ^6.2.2
   share_plus: ^7.2.1
   package_info_plus: ^5.0.1
@@ -55,7 +55,8 @@ dependencies:
   local_auth: ^2.1.8
   
   # Payments
-  flutter_paystack: ^1.0.7
+  # flutter_paystack has outdated dependencies, using webview for payments instead
+  webview_flutter: ^4.4.2
   
   # Image Handling
   image_picker: ^1.0.7
@@ -83,6 +84,10 @@ dependencies:
   flutter_dotenv: ^5.1.0
   timeago: ^3.6.1
 
+  # Dependency Injection
+  injectable: ^2.3.2
+  get_it: ^7.6.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -92,6 +97,7 @@ dev_dependencies:
   freezed: ^2.4.6
   json_serializable: ^6.7.1
   riverpod_generator: ^2.3.9
+  injectable_generator: ^2.4.1
 
   # Linting
   flutter_lints: ^3.0.1
