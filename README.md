@@ -80,16 +80,17 @@ cd hustlex
 2. **Start backend services**
 ```bash
 cd backend
-cp .env.example .env  # Configure environment
-docker-compose up -d  # Start PostgreSQL & Redis
+cp .env.example .env  # Edit with your values
+docker-compose up -d
 go run cmd/api/main.go
 ```
 
 3. **Start mobile app**
 ```bash
 cd mobile
-cp .env.example .env
+cp .env.example .env  # Edit with your values
 flutter pub get
+flutter pub run build_runner build --delete-conflicting-outputs
 flutter run
 ```
 
