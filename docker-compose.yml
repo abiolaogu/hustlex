@@ -1,0 +1,302 @@
+# =============================================================================
+# HustleX Development Docker Compose
+# =============================================================================
+# Usage:
+#   Start all services:     docker-compose up -d
+#   Start with logs:        docker-compose up
+#   Stop all services:      docker-compose down
+#   Reset everything:       docker-compose down -v
+#   Rebuild:                docker-compose up --build
+#   View logs:              docker-compose logs -f [service]
+
+version: '3.9'
+
+services:
+  # ===========================================================================
+  # Application Services
+  # ===========================================================================
+  
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hustlex-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - go-modules:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    environment:
+      - APP_ENV=development
+      - APP_PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=hustlex
+      - DB_USER=hustlex
+      - DB_PASSWORD=hustlex_dev_password
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hustlex-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ===========================================================================
+  # Database Services
+  # ===========================================================================
+  
+  postgres:
+    image: postgres:16-alpine
+    container_name: hustlex-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: hustlex
+      POSTGRES_USER: hustlex
+      POSTGRES_PASSWORD: hustlex_dev_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Africa/Lagos
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - hustlex-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hustlex -d hustlex"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: >
+      postgres
+        -c max_connections=200
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c maintenance_work_mem=64MB
+        -c checkpoint_completion_target=0.7
+        -c wal_buffers=16MB
+        -c default_statistics_target=100
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c min_wal_size=1GB
+        -c max_wal_size=4GB
+        -c log_statement=all
+        -c log_duration=on
+
+  redis:
+    image: redis:7-alpine
+    container_name: hustlex-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - hustlex-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --tcp-keepalive 300
+
+  # ===========================================================================
+  # Development Tools
+  # ===========================================================================
+
+  # Database admin interface
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hustlex-pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@hustlex.ng
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - hustlex-network
+    profiles:
+      - tools
+
+  # Redis admin interface
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: hustlex-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - hustlex-network
+    profiles:
+      - tools
+
+  # ===========================================================================
+  # Monitoring Stack (Optional)
+  # ===========================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hustlex-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - hustlex-network
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hustlex-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - hustlex-network
+    profiles:
+      - monitoring
+
+  # Jaeger for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: hustlex-jaeger
+    restart: unless-stopped
+    ports:
+      - "6831:6831/udp"  # Jaeger thrift compact
+      - "16686:16686"    # Web UI
+      - "14268:14268"    # HTTP collector
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    networks:
+      - hustlex-network
+    profiles:
+      - monitoring
+
+  # ===========================================================================
+  # Message Queue (for background jobs)
+  # ===========================================================================
+
+  # RabbitMQ for task queues
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: hustlex-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: hustlex
+      RABBITMQ_DEFAULT_PASS: hustlex_rabbit_password
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - hustlex-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - queue
+
+  # ===========================================================================
+  # Mock Services (for development)
+  # ===========================================================================
+
+  # Mock SMS/Payment gateway for testing
+  mockserver:
+    image: mockserver/mockserver:latest
+    container_name: hustlex-mockserver
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/mockserver-init.json
+    volumes:
+      - ./mocks/mockserver-init.json:/config/mockserver-init.json:ro
+    networks:
+      - hustlex-network
+    profiles:
+      - mocks
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  hustlex-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  pgadmin-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  rabbitmq-data:
+    driver: local
+  go-modules:
+    driver: local
+  go-build-cache:
+    driver: local

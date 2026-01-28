@@ -1,0 +1,86 @@
+# ===========================
+# HustleX Project .gitignore
+# ===========================
+
+# -----------------
+# Environment Files
+# -----------------
+.env
+.env.local
+.env.*.local
+*.env
+
+# -----------------
+# IDE / Editors
+# -----------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# -----------------
+# OS Generated
+# -----------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# -----------------
+# Logs
+# -----------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# -----------------
+# Temporary Files
+# -----------------
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+
+# -----------------
+# Build Outputs
+# -----------------
+dist/
+build/
+out/
+target/
+
+# -----------------
+# Secrets & Keys
+# -----------------
+*.pem
+*.key
+*.crt
+*.p12
+*.keystore
+*.jks
+key.properties
+secrets.json
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# -----------------
+# Archives
+# -----------------
+*.zip
+*.tar.gz
+*.rar
+*.7z

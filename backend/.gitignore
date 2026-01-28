@@ -1,0 +1,70 @@
+# ===========================
+# Go Backend .gitignore
+# ===========================
+
+# -----------------
+# Binaries
+# -----------------
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+hustlex-api
+hustlex-worker
+api
+worker
+
+# -----------------
+# Build & Test
+# -----------------
+*.test
+*.out
+coverage.out
+coverage.html
+coverage/
+
+# -----------------
+# Dependency
+# -----------------
+vendor/
+
+# -----------------
+# Go workspace
+# -----------------
+go.work
+go.work.sum
+
+# -----------------
+# Air (hot reload)
+# -----------------
+tmp/
+
+# -----------------
+# Environment
+# -----------------
+.env
+.env.local
+.env.*.local
+
+# -----------------
+# IDE
+# -----------------
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# -----------------
+# Debug
+# -----------------
+__debug_bin
+debug
+*.prof
+
+# -----------------
+# Secrets
+# -----------------
+*.pem
+*.key
+secrets/

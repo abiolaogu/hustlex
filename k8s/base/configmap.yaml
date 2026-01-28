@@ -1,0 +1,113 @@
+# =============================================================================
+# HustleX Kubernetes ConfigMap
+# =============================================================================
+# Non-sensitive configuration values
+# Sensitive values should be in secrets.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hustlex-config
+  namespace: hustlex
+  labels:
+    app.kubernetes.io/name: hustlex
+    app.kubernetes.io/component: config
+data:
+  # Application Settings
+  APP_ENV: "production"
+  APP_NAME: "HustleX"
+  APP_PORT: "8080"
+  APP_HOST: "0.0.0.0"
+  APP_DEBUG: "false"
+  
+  # API Settings
+  API_VERSION: "v1"
+  API_PREFIX: "/api"
+  
+  # Database Settings (host comes from service name)
+  DB_PORT: "5432"
+  DB_NAME: "hustlex"
+  DB_SSLMODE: "require"
+  DB_TIMEZONE: "Africa/Lagos"
+  DB_MAX_OPEN_CONNS: "100"
+  DB_MAX_IDLE_CONNS: "10"
+  DB_CONN_MAX_LIFETIME: "3600"
+  
+  # Redis Settings (host comes from service name)
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_POOL_SIZE: "10"
+  
+  # JWT Settings
+  JWT_ACCESS_EXPIRY: "15m"
+  JWT_REFRESH_EXPIRY: "168h"
+  JWT_ISSUER: "hustlex-api"
+  
+  # CORS Settings
+  CORS_ALLOWED_METHODS: "GET,POST,PUT,DELETE,PATCH,OPTIONS"
+  CORS_ALLOWED_HEADERS: "Origin,Content-Type,Accept,Authorization,X-Request-ID"
+  
+  # Rate Limiting
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW: "60"
+  
+  # Payment Settings
+  DEFAULT_PAYMENT_PROVIDER: "paystack"
+  PAYSTACK_BASE_URL: "https://api.paystack.co"
+  FLUTTERWAVE_BASE_URL: "https://api.flutterwave.com/v3"
+  
+  # SMS Settings
+  DEFAULT_SMS_PROVIDER: "termii"
+  TERMII_BASE_URL: "https://api.ng.termii.com/api"
+  TERMII_SENDER_ID: "HustleX"
+  
+  # Email Settings
+  DEFAULT_EMAIL_PROVIDER: "sendgrid"
+  SENDGRID_FROM_EMAIL: "noreply@hustlex.ng"
+  SENDGRID_FROM_NAME: "HustleX"
+  
+  # Storage Settings
+  DEFAULT_STORAGE_PROVIDER: "s3"
+  AWS_REGION: "eu-west-1"
+  
+  # Feature Flags
+  FEATURE_LOANS_ENABLED: "true"
+  FEATURE_SAVINGS_CIRCLES_ENABLED: "true"
+  FEATURE_P2P_TRANSFERS_ENABLED: "true"
+  FEATURE_LEARNING_ENABLED: "false"
+  FEATURE_TRIBES_ENABLED: "false"
+  
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  LOG_OUTPUT: "stdout"
+  
+  # Metrics
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  
+  # Business Configuration (in Kobo)
+  WALLET_MIN_DEPOSIT: "10000"
+  WALLET_MAX_DEPOSIT: "1000000000"
+  WALLET_MIN_WITHDRAWAL: "50000"
+  WALLET_MAX_WITHDRAWAL: "500000000"
+  WALLET_DAILY_TRANSFER_LIMIT: "100000000"
+  MIN_CREDIT_SCORE_FOR_LOAN: "300"
+  MIN_LOAN_AMOUNT: "500000"
+  MAX_LOAN_AMOUNT: "50000000"
+  LOAN_INTEREST_RATE_MONTHLY: "5"
+  LOAN_PROCESSING_FEE_PERCENT: "2"
+  LOAN_DEFAULT_GRACE_DAYS: "3"
+  MIN_SAVINGS_CONTRIBUTION: "100000"
+  MAX_CIRCLE_MEMBERS: "30"
+  MIN_GIG_BUDGET: "100000"
+  PLATFORM_FEE_PERCENT: "10"
+  ESCROW_RELEASE_DELAY_HOURS: "24"
+  
+  # Background Jobs
+  WORKER_CONCURRENCY: "5"
+  JOB_RETRY_ATTEMPTS: "3"
+  JOB_RETRY_DELAY: "60"
+  CRON_SAVINGS_CONTRIBUTION: "0 9 * * *"
+  CRON_LOAN_REMINDER: "0 8 * * *"
+  CRON_CREDIT_SCORE_UPDATE: "0 0 * * 0"

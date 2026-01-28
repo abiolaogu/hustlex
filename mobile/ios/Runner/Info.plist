@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Bundle Information -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>HustleX</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>hustlex</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+
+	<!-- Launch Configuration -->
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+
+	<!-- Supported Orientations -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- Required Device Capabilities -->
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+
+	<!-- Status Bar -->
+	<key>UIStatusBarHidden</key>
+	<false/>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+	<!-- PERMISSIONS -->
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+	<!-- Camera Permission (for profile photo, document upload) -->
+	<key>NSCameraUsageDescription</key>
+	<string>HustleX needs camera access to take profile photos and upload documents for verification.</string>
+
+	<!-- Photo Library Permission -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HustleX needs photo library access to select profile pictures and upload documents.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>HustleX needs permission to save images to your photo library.</string>
+
+	<!-- Face ID / Touch ID Permission -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>HustleX uses Face ID for quick and secure login to your account.</string>
+
+	<!-- Contacts Permission (optional, for easy transfers) -->
+	<key>NSContactsUsageDescription</key>
+	<string>HustleX can access your contacts to make sending money easier.</string>
+
+	<!-- Location Permission (for fraud prevention) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HustleX uses your location to help prevent fraud and find nearby gigs.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>HustleX uses your location to help prevent fraud and notify you of nearby gigs.</string>
+
+	<!-- Microphone (for video calls if implemented) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>HustleX needs microphone access for video calls with clients.</string>
+
+	<!-- Notifications -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+	<!-- URL SCHEMES & DEEP LINKING -->
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+	<!-- Custom URL Scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.hustlex.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hustlex</string>
+			</array>
+		</dict>
+		<!-- Paystack Callback -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>paystack-callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hustlex-paystack</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Universal Links -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:hustlex.app</string>
+		<string>applinks:www.hustlex.app</string>
+	</array>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+	<!-- APP TRANSPORT SECURITY -->
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Allow localhost for development -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<!-- Production: Only allow HTTPS -->
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<!-- Exception domains for third-party services -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<!-- Paystack -->
+			<key>paystack.co</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<false/>
+			</dict>
+			<!-- Firebase -->
+			<key>googleapis.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+	<!-- QUERIED URL SCHEMES -->
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<!-- Social sharing -->
+		<string>whatsapp</string>
+		<string>twitter</string>
+		<string>instagram</string>
+		<string>fb</string>
+		<!-- Banking apps (for potential future integrations) -->
+		<string>gtbank</string>
+		<string>firstbank</string>
+		<string>accessbank</string>
+		<!-- Maps -->
+		<string>comgooglemaps</string>
+		<!-- Phone -->
+		<string>tel</string>
+		<string>sms</string>
+		<string>mailto</string>
+	</array>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+	<!-- ENCRYPTION -->
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+	<!-- App uses encryption (HTTPS) -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+	<!-- FLUTTER SPECIFIC -->
+	<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+
+</dict>
+</plist>

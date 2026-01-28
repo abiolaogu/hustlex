@@ -1,0 +1,201 @@
+# =============================================================================
+# PostgreSQL StatefulSet
+# =============================================================================
+# For production, consider using:
+# - Cloud-managed databases (AWS RDS, GCP Cloud SQL, Azure PostgreSQL)
+# - Operators like CloudNativePG, Zalando Postgres Operator, or CrunchyData
+# This manifest is for development/testing environments
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: hustlex
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      terminationGracePeriodSeconds: 30
+      
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          
+          env:
+            - name: POSTGRES_DB
+              value: hustlex
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: hustlex-secrets
+                  key: DB_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hustlex-secrets
+                  key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: TZ
+              value: Africa/Lagos
+          
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+          
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - hustlex
+                - -d
+                - hustlex
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - hustlex
+                - -d
+                - hustlex
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-config
+              mountPath: /etc/postgresql/conf.d
+              readOnly: true
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          
+          securityContext:
+            allowPrivilegeEscalation: false
+      
+      volumes:
+        - name: postgres-config
+          configMap:
+            name: postgres-config
+        - name: init-scripts
+          configMap:
+            name: postgres-init-scripts
+  
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app.kubernetes.io/name: postgres
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard  # Adjust based on your cloud provider
+        resources:
+          requests:
+            storage: 50Gi
+
+---
+# PostgreSQL Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: hustlex
+  labels:
+    app.kubernetes.io/name: postgres
+data:
+  postgresql.conf: |
+    # Connection settings
+    max_connections = 200
+    
+    # Memory settings
+    shared_buffers = 1GB
+    effective_cache_size = 3GB
+    maintenance_work_mem = 256MB
+    work_mem = 16MB
+    
+    # Write ahead log
+    wal_buffers = 64MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    checkpoint_completion_target = 0.9
+    
+    # Query planning
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    
+    # Logging
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = 'pg_log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_min_duration_statement = 200ms
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+    
+    # Timezone
+    timezone = 'Africa/Lagos'
+
+---
+# PostgreSQL Init Scripts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: hustlex
+  labels:
+    app.kubernetes.io/name: postgres
+data:
+  01-init.sql: |
+    -- Enable required extensions
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+    CREATE EXTENSION IF NOT EXISTS "btree_gin";
+    
+    -- Create schemas
+    CREATE SCHEMA IF NOT EXISTS audit;
+    CREATE SCHEMA IF NOT EXISTS analytics;
+    
+    -- Grant permissions
+    GRANT ALL PRIVILEGES ON SCHEMA audit TO hustlex;
+    GRANT ALL PRIVILEGES ON SCHEMA analytics TO hustlex;

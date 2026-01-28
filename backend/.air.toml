@@ -1,0 +1,104 @@
+# =============================================================================
+# Air Configuration for HustleX Backend
+# =============================================================================
+# Hot reload configuration for Go development
+# https://github.com/cosmtrek/air
+
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  # Binary name
+  bin = "./tmp/main"
+  
+  # Build command
+  cmd = "go build -o ./tmp/main ./cmd/api"
+  
+  # Time delay after file change before rebuilding (ms)
+  delay = 500
+  
+  # Directories to exclude from watching
+  exclude_dir = [
+    "assets",
+    "tmp",
+    "vendor",
+    "testdata",
+    "node_modules",
+    ".git",
+    "uploads",
+    "logs"
+  ]
+  
+  # File extensions to exclude
+  exclude_file = []
+  
+  # Regex patterns to exclude
+  exclude_regex = ["_test.go", ".*_templ.go"]
+  
+  # Exclude unchanged files
+  exclude_unchanged = false
+  
+  # Follow symbolic links
+  follow_symlink = false
+  
+  # Build output directory
+  full_bin = ""
+  
+  # Watch directories
+  include_dir = []
+  
+  # File extensions to watch
+  include_ext = ["go", "tpl", "tmpl", "html", "yaml", "yml", "json", "env"]
+  
+  # Additional files to watch
+  include_file = []
+  
+  # Kill delay for graceful shutdown (ns)
+  kill_delay = "0s"
+  
+  # Enable Go's -race flag
+  race = false
+  
+  # Log build output
+  log = "build-errors.log"
+  
+  # Build errors file
+  poll = false
+  poll_interval = 0
+  
+  # Rerun on changes
+  rerun = false
+  rerun_delay = 500
+  
+  # Send interrupt signal before kill
+  send_interrupt = true
+  
+  # Stop on error
+  stop_on_error = false
+
+[color]
+  # Customize output colors
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  # Show timestamp in logs
+  main_only = false
+  
+  # Time format
+  time = false
+
+[misc]
+  # Delete temp directory on exit
+  clean_on_exit = true
+
+[screen]
+  # Clear screen on rebuild
+  clear_on_rebuild = true
+  
+  # Keep scroll position
+  keep_scroll = true
