@@ -166,3 +166,15 @@ type ReferralRepository interface {
 	// GetReferrals gets the list of users referred by a user
 	GetReferrals(ctx context.Context, userID valueobject.UserID, limit, offset int) ([]valueobject.UserID, error)
 }
+
+// TokenBlacklistRepository defines the interface for token revocation
+type TokenBlacklistRepository interface {
+	// BlacklistToken adds a token to the blacklist with expiration
+	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
+
+	// IsTokenBlacklisted checks if a token is blacklisted
+	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
+
+	// CleanupExpiredTokens removes expired tokens from blacklist (for maintenance)
+	CleanupExpiredTokens(ctx context.Context) error
+}

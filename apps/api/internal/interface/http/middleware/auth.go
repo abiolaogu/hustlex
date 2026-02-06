@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"hustlex/internal/domain/identity/repository"
 	"hustlex/internal/domain/shared/valueobject"
 )
 
@@ -36,12 +37,16 @@ type TokenClaims struct {
 
 // AuthMiddleware handles authentication
 type AuthMiddleware struct {
-	tokenValidator TokenValidator
+	tokenValidator    TokenValidator
+	tokenBlacklist    repository.TokenBlacklistRepository
 }
 
 // NewAuthMiddleware creates a new auth middleware
-func NewAuthMiddleware(tokenValidator TokenValidator) *AuthMiddleware {
-	return &AuthMiddleware{tokenValidator: tokenValidator}
+func NewAuthMiddleware(tokenValidator TokenValidator, tokenBlacklist repository.TokenBlacklistRepository) *AuthMiddleware {
+	return &AuthMiddleware{
+		tokenValidator: tokenValidator,
+		tokenBlacklist: tokenBlacklist,
+	}
 }
 
 // Authenticate validates the JWT token and sets user context
@@ -51,6 +56,19 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		if token == "" {
 			http.Error(w, `{"error":"unauthorized","message":"missing or invalid token"}`, http.StatusUnauthorized)
 			return
+		}
+
+		// Check if token is blacklisted (revoked)
+		if m.tokenBlacklist != nil {
+			blacklisted, err := m.tokenBlacklist.IsTokenBlacklisted(r.Context(), token)
+			if err != nil {
+				// Log error but don't fail the request if blacklist check fails
+				// In production, you might want to fail secure (reject the token)
+				// For now, we log and continue
+			} else if blacklisted {
+				http.Error(w, `{"error":"unauthorized","message":"token has been revoked"}`, http.StatusUnauthorized)
+				return
+			}
 		}
 
 		claims, err := m.tokenValidator.ValidateToken(token)

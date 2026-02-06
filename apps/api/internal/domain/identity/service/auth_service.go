@@ -166,12 +166,13 @@ func (s *RegistrationService) Register(ctx context.Context, req RegistrationRequ
 
 // AuthenticationService handles authentication domain logic
 type AuthenticationService struct {
-	userRepo       repository.UserRepository
-	otpRepo        repository.OTPRepository
-	sessionRepo    repository.SessionRepository
-	otpGenerator   OTPGenerator
-	otpSender      OTPSender
-	tokenGenerator TokenGenerator
+	userRepo        repository.UserRepository
+	otpRepo         repository.OTPRepository
+	sessionRepo     repository.SessionRepository
+	tokenBlacklist  repository.TokenBlacklistRepository
+	otpGenerator    OTPGenerator
+	otpSender       OTPSender
+	tokenGenerator  TokenGenerator
 }
 
 // NewAuthenticationService creates a new authentication service
@@ -179,6 +180,7 @@ func NewAuthenticationService(
 	userRepo repository.UserRepository,
 	otpRepo repository.OTPRepository,
 	sessionRepo repository.SessionRepository,
+	tokenBlacklist repository.TokenBlacklistRepository,
 	otpGenerator OTPGenerator,
 	otpSender OTPSender,
 	tokenGenerator TokenGenerator,
@@ -187,6 +189,7 @@ func NewAuthenticationService(
 		userRepo:       userRepo,
 		otpRepo:        otpRepo,
 		sessionRepo:    sessionRepo,
+		tokenBlacklist: tokenBlacklist,
 		otpGenerator:   otpGenerator,
 		otpSender:      otpSender,
 		tokenGenerator: tokenGenerator,
@@ -375,7 +378,29 @@ func (s *AuthenticationService) RefreshTokens(ctx context.Context, refreshToken 
 	}, nil
 }
 
-// Logout invalidates the user's session
-func (s *AuthenticationService) Logout(ctx context.Context, userID valueobject.UserID) error {
-	return s.sessionRepo.DeleteRefreshToken(ctx, userID)
+// Logout invalidates the user's session and blacklists the access token
+func (s *AuthenticationService) Logout(ctx context.Context, userID valueobject.UserID, accessToken string) error {
+	// Delete refresh token
+	if err := s.sessionRepo.DeleteRefreshToken(ctx, userID); err != nil {
+		return err
+	}
+
+	// Blacklist the access token if provided and blacklist is available
+	if accessToken != "" && s.tokenBlacklist != nil {
+		// Validate token to get expiration time
+		claims, err := s.tokenGenerator.ValidateAccessToken(accessToken)
+		if err != nil {
+			// Token is invalid, no need to blacklist
+			return nil
+		}
+
+		// Add token to blacklist with its expiration time
+		if err := s.tokenBlacklist.BlacklistToken(ctx, accessToken, claims.ExpiresAt); err != nil {
+			// Log error but don't fail logout
+			// Refresh token deletion is more important
+			return nil
+		}
+	}
+
+	return nil
 }

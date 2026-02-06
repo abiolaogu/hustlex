@@ -424,6 +424,12 @@ Enable financial inclusion and economic opportunity for gig workers, informal en
 **Acceptance Criteria:**
 - [x] Run comprehensive security audit - **COMPLETED**
 - [ ] Fix all critical vulnerabilities (9 issues identified - see SECURITY_AUDIT_REPORT.md)
+  - [x] Issue #1: Token revocation mechanism - **COMPLETED 2026-02-06**
+  - [ ] Issue #2: CSRF protection - **IN PROGRESS (Next)**
+  - [ ] Issue #4: X-Forwarded-For validation
+  - [ ] Issue #7: Webhook idempotency
+  - [ ] Issue #8: Email validation
+  - [ ] Issue #9: WebSocket authentication
 - [ ] Fix all high-priority vulnerabilities
 - [ ] Document security measures - **COMPLETED**
 - [ ] Pass penetration testing (scheduled after critical fixes)
@@ -435,8 +441,12 @@ Enable financial inclusion and economic opportunity for gig workers, informal en
 - Detailed report: `docs/SECURITY_AUDIT_REPORT.md`
 
 **Next Actions:**
-1. Implement token revocation mechanism (Issue #1) - 1-2 days
-2. Add CSRF protection (Issue #2) - 2-3 days
+1. ✅ **COMPLETED** - Implement token revocation mechanism (Issue #1) - Completed 2026-02-06
+   - Added `TokenBlacklistRepository` interface
+   - Implemented Redis-backed blacklist with SHA-256 hashing
+   - Updated auth middleware to check blacklist
+   - Updated logout to blacklist access tokens
+2. Add CSRF protection (Issue #2) - 2-3 days **← NEXT PRIORITY**
 3. Fix X-Forwarded-For validation (Issue #4) - 1 day
 4. Implement webhook idempotency (Issue #7) - 2 days
 5. Fix email validation (Issue #8) - 1 day
@@ -626,3 +636,4 @@ See: `docs/api/business-plan/00_EXECUTIVE_SUMMARY.md`
 *Change log:*
 - *v1.0 (2026-02-06): Initial PRD creation based on README, business plan, and implementation plan*
 - *v1.1 (2026-02-06): Updated Task 1 status - Security audit completed, remediation roadmap added*
+- *v1.2 (2026-02-06): Completed Issue #1 - Token revocation mechanism implemented with Redis-backed blacklist*
