@@ -22,17 +22,19 @@ import (
 
 // AuthService handles authentication operations
 type AuthService struct {
-	db     *gorm.DB
-	redis  *redis.Client
-	config *config.JWTConfig
+	db        *gorm.DB
+	redis     *redis.Client
+	config    *config.JWTConfig
+	blacklist *TokenBlacklistService
 }
 
 // NewAuthService creates a new auth service
 func NewAuthService(db *gorm.DB, redis *redis.Client, cfg *config.JWTConfig) *AuthService {
 	return &AuthService{
-		db:     db,
-		redis:  redis,
-		config: cfg,
+		db:        db,
+		redis:     redis,
+		config:    cfg,
+		blacklist: NewTokenBlacklistService(redis),
 	}
 }
 
@@ -319,6 +321,28 @@ func (s *AuthService) ValidateAccessToken(tokenString string) (*Claims, error) {
 		return nil, errors.New("invalid token")
 	}
 
+	// Check if token is blacklisted
+	ctx := context.Background()
+	isBlacklisted, err := s.blacklist.IsTokenBlacklisted(ctx, tokenString)
+	if err != nil {
+		// Log error but don't fail - fail open for availability
+		log.Printf("Error checking token blacklist: %v", err)
+	}
+	if isBlacklisted {
+		return nil, errors.New("token has been revoked")
+	}
+
+	// Check if all user tokens have been revoked (e.g., password change)
+	if claims.IssuedAt != nil {
+		isRevoked, err := s.blacklist.IsUserTokenRevoked(ctx, claims.UserID.String(), claims.IssuedAt.Time)
+		if err != nil {
+			log.Printf("Error checking user token revocation: %v", err)
+		}
+		if isRevoked {
+			return nil, errors.New("token has been revoked due to security action")
+		}
+	}
+
 	return claims, nil
 }
 
@@ -358,10 +382,42 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshTokenString stri
 	return s.GenerateTokens(&user)
 }
 
-// Logout invalidates refresh token
-func (s *AuthService) Logout(ctx context.Context, userID uuid.UUID) error {
+// Logout invalidates both access and refresh tokens
+func (s *AuthService) Logout(ctx context.Context, userID uuid.UUID, accessToken string) error {
+	// Delete refresh token from Redis
 	refreshKey := fmt.Sprintf("refresh:%s", userID.String())
-	return s.redis.Del(ctx, refreshKey).Err()
+	if err := s.redis.Del(ctx, refreshKey).Err(); err != nil {
+		log.Printf("Error deleting refresh token: %v", err)
+	}
+
+	// Blacklist the current access token
+	// Extract expiry from token to set appropriate TTL
+	token, err := jwt.ParseWithClaims(accessToken, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(s.config.Secret), nil
+	})
+
+	if err == nil {
+		if claims, ok := token.Claims.(*Claims); ok && claims.ExpiresAt != nil {
+			if err := s.blacklist.BlacklistToken(ctx, accessToken, claims.ExpiresAt.Time); err != nil {
+				log.Printf("Error blacklisting access token: %v", err)
+				// Don't fail logout if blacklisting fails
+			}
+		}
+	}
+
+	return nil
+}
+
+// RevokeAllUserTokens revokes all tokens for a user (e.g., on password change)
+func (s *AuthService) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error {
+	// Delete refresh token
+	refreshKey := fmt.Sprintf("refresh:%s", userID.String())
+	if err := s.redis.Del(ctx, refreshKey).Err(); err != nil {
+		log.Printf("Error deleting refresh token: %v", err)
+	}
+
+	// Mark all user tokens as revoked
+	return s.blacklist.BlacklistAllUserTokens(ctx, userID.String())
 }
 
 // SetTransactionPIN sets/updates user's transaction PIN

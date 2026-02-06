@@ -1,14 +1,17 @@
 package middleware
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"hustlex/internal/config"
+	"hustlex/internal/services"
 )
 
 // Claims represents JWT claims
@@ -20,7 +23,9 @@ type Claims struct {
 }
 
 // AuthMiddleware validates JWT tokens
-func AuthMiddleware(cfg *config.Config) fiber.Handler {
+func AuthMiddleware(cfg *config.Config, redis *redis.Client) fiber.Handler {
+	blacklist := services.NewTokenBlacklistService(redis)
+
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
@@ -72,6 +77,34 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 			})
 		}
 
+		// Check if token is blacklisted
+		ctx := context.Background()
+		isBlacklisted, err := blacklist.IsTokenBlacklisted(ctx, tokenString)
+		if err != nil {
+			// Log error but don't fail - fail open for availability
+			// In production, consider failing closed for security
+		}
+		if isBlacklisted {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"success": false,
+				"error":   "Token has been revoked",
+			})
+		}
+
+		// Check if all user tokens have been revoked
+		if claims.IssuedAt != nil {
+			isRevoked, err := blacklist.IsUserTokenRevoked(ctx, claims.UserID.String(), claims.IssuedAt.Time)
+			if err != nil {
+				// Log error but don't fail
+			}
+			if isRevoked {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"success": false,
+					"error":   "Token has been revoked due to security action",
+				})
+			}
+		}
+
 		// Store user info in context
 		c.Locals("userID", claims.UserID)
 		c.Locals("phone", claims.Phone)
@@ -82,7 +115,9 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 }
 
 // OptionalAuthMiddleware checks for token but doesn't require it
-func OptionalAuthMiddleware(cfg *config.Config) fiber.Handler {
+func OptionalAuthMiddleware(cfg *config.Config, redis *redis.Client) fiber.Handler {
+	blacklist := services.NewTokenBlacklistService(redis)
+
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
@@ -105,6 +140,21 @@ func OptionalAuthMiddleware(cfg *config.Config) fiber.Handler {
 		}
 
 		if claims, ok := token.Claims.(*Claims); ok {
+			// Check blacklist even for optional auth
+			ctx := context.Background()
+			isBlacklisted, _ := blacklist.IsTokenBlacklisted(ctx, tokenString)
+			if isBlacklisted {
+				return c.Next() // Just skip auth, don't fail
+			}
+
+			// Check user-level revocation
+			if claims.IssuedAt != nil {
+				isRevoked, _ := blacklist.IsUserTokenRevoked(ctx, claims.UserID.String(), claims.IssuedAt.Time)
+				if isRevoked {
+					return c.Next() // Just skip auth, don't fail
+				}
+			}
+
 			c.Locals("userID", claims.UserID)
 			c.Locals("phone", claims.Phone)
 			c.Locals("tier", claims.Tier)
