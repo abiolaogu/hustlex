@@ -23,12 +23,13 @@ type Config struct {
 
 // ServerConfig holds server-related configuration
 type ServerConfig struct {
-	Port         string
-	Environment  string
-	AllowOrigins string
-	RateLimit    int
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Port           string
+	Environment    string
+	AllowOrigins   string
+	RateLimit      int
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	TrustedProxies []string // CIDR ranges of trusted proxies for X-Forwarded-For validation
 }
 
 // DatabaseConfig holds database configuration
@@ -118,14 +119,22 @@ func Load() (*Config, error) {
 		dbPassword = "hustlex_password"
 	}
 
+	// Parse trusted proxies (comma-separated CIDR ranges)
+	trustedProxiesStr := getEnv("TRUSTED_PROXIES", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+	trustedProxies := strings.Split(trustedProxiesStr, ",")
+	for i, proxy := range trustedProxies {
+		trustedProxies[i] = strings.TrimSpace(proxy)
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
-			Port:         getEnv("SERVER_PORT", "8080"),
-			Environment:  environment,
-			AllowOrigins: corsOrigins,
-			RateLimit:    getEnvInt("RATE_LIMIT", 100),
-			ReadTimeout:  getEnvDuration("READ_TIMEOUT", 30*time.Second),
-			WriteTimeout: getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
+			Port:           getEnv("SERVER_PORT", "8080"),
+			Environment:    environment,
+			AllowOrigins:   corsOrigins,
+			RateLimit:      getEnvInt("RATE_LIMIT", 100),
+			ReadTimeout:    getEnvDuration("READ_TIMEOUT", 30*time.Second),
+			WriteTimeout:   getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
+			TrustedProxies: trustedProxies,
 		},
 		Database: DatabaseConfig{
 			Host:         getEnv("DB_HOST", "localhost"),

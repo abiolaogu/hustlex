@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abiolaogu/hustlex/apps/api/internal/infrastructure/security/iputil"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -286,8 +287,11 @@ func RateLimitMiddleware(limiter RateLimiter, keyFunc func(r *http.Request) stri
 }
 
 // IPKeyFunc extracts IP address from request for rate limiting
+// DEPRECATED: Use NewSecureIPKeyFunc with trusted proxy configuration instead.
+// This function is vulnerable to IP spoofing attacks.
 func IPKeyFunc(r *http.Request) string {
 	// Check X-Forwarded-For header first (for proxied requests)
+	// WARNING: This blindly trusts the header without validation
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		return xff
 	}
@@ -297,6 +301,19 @@ func IPKeyFunc(r *http.Request) string {
 	}
 	// Fall back to RemoteAddr
 	return r.RemoteAddr
+}
+
+// NewSecureIPKeyFunc creates a secure IP extraction function with trusted proxy validation
+// This prevents IP spoofing by only trusting X-Forwarded-For from configured proxies
+func NewSecureIPKeyFunc(trustedProxies []string) (func(r *http.Request) string, error) {
+	extractor, err := iputil.NewIPExtractor(trustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IP extractor: %w", err)
+	}
+
+	return func(r *http.Request) string {
+		return extractor.GetClientIP(r)
+	}, nil
 }
 
 // UserKeyFunc extracts user ID from context for rate limiting
@@ -309,7 +326,34 @@ func UserKeyFunc(userIDKey interface{}) func(r *http.Request) string {
 	}
 }
 
+// NewSecureUserKeyFunc creates a secure user key function with fallback to secure IP extraction
+func NewSecureUserKeyFunc(userIDKey interface{}, trustedProxies []string) (func(r *http.Request) string, error) {
+	ipKeyFunc, err := NewSecureIPKeyFunc(trustedProxies)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(r *http.Request) string {
+		if userID, ok := r.Context().Value(userIDKey).(string); ok {
+			return userID
+		}
+		return ipKeyFunc(r)
+	}, nil
+}
+
 // CompositeKeyFunc combines IP and endpoint for rate limiting
 func CompositeKeyFunc(r *http.Request) string {
 	return fmt.Sprintf("%s:%s:%s", IPKeyFunc(r), r.Method, r.URL.Path)
+}
+
+// NewSecureCompositeKeyFunc creates a secure composite key function
+func NewSecureCompositeKeyFunc(trustedProxies []string) (func(r *http.Request) string, error) {
+	ipKeyFunc, err := NewSecureIPKeyFunc(trustedProxies)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(r *http.Request) string {
+		return fmt.Sprintf("%s:%s:%s", ipKeyFunc(r), r.Method, r.URL.Path)
+	}, nil
 }
