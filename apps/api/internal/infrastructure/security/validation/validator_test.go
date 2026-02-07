@@ -463,3 +463,121 @@ func TestValidationError_HasErrors(t *testing.T) {
 		t.Error("Expected errors after adding")
 	}
 }
+
+// TestIsValidEmail tests the RFC-compliant email validation
+func TestIsValidEmail(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"simple valid", "test@example.com", false},
+		{"with subdomain", "user@mail.example.com", false},
+		{"with plus", "user+tag@example.com", false},
+		{"with dots", "first.last@example.com", false},
+		{"with underscore", "user_name@example.com", false},
+		{"with hyphen", "user-name@example.com", false},
+		{"with numbers", "user123@example456.com", false},
+		{"short local", "a@example.com", false},
+		{"short domain", "user@ex.co", false},
+		{"multiple subdomains", "user@mail.sub.example.com", false},
+
+		// Invalid emails
+		{"empty string", "", true},
+		{"no at symbol", "userexample.com", true},
+		{"no domain", "user@", true},
+		{"no local part", "@example.com", true},
+		{"multiple at symbols", "user@@example.com", true},
+		{"no top level domain", "user@example", true},
+		{"consecutive dots", "user..name@example.com", true},
+		{"starts with dot", ".user@example.com", true},
+		{"ends with dot", "user.@example.com", true},
+		{"domain starts with dot", "user@.example.com", true},
+		{"domain ends with dot", "user@example.com.", true},
+		{"domain starts with hyphen", "user@-example.com", true},
+		{"domain ends with hyphen", "user@example-.com", true},
+		{"spaces", "user name@example.com", true},
+		{"only at symbol", "@", true},
+		{"only domain", "example.com", true},
+
+		// RFC edge cases
+		{"local part too long (>64)", "a123456789012345678901234567890123456789012345678901234567890123@example.com", true},
+		{"total too long (>254)", "a@" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + "verylongdomainname" + ".com", true},
+
+		// Special characters that should work
+		{"with numbers in domain", "user@example123.com", false},
+		{"multiple dots in domain", "user@mail.example.co.uk", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := isValidEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("isValidEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateEmail_RFCCompliance ensures ValidateEmail uses RFC-compliant validation
+func TestValidateEmail_RFCCompliance(t *testing.T) {
+	// Valid RFC 5321 emails that basic regex would miss
+	validEmails := []string{
+		"user+filter@example.com",
+		"first.last@example.com",
+		"user_name@example.com",
+		"user-name@example.com",
+	}
+
+	for _, email := range validEmails {
+		err := ValidateEmail(email)
+		if err != nil {
+			t.Errorf("ValidateEmail(%q) should be valid, got error: %v", email, err)
+		}
+	}
+
+	// Invalid emails that should be caught
+	invalidEmails := []string{
+		"user..name@example.com",  // consecutive dots
+		"user@example",             // no TLD
+		".user@example.com",        // starts with dot
+		"user.@example.com",        // ends with dot
+		"user name@example.com",    // space in local part
+	}
+
+	for _, email := range invalidEmails {
+		err := ValidateEmail(email)
+		if err == nil {
+			t.Errorf("ValidateEmail(%q) should be invalid, but got no error", email)
+		}
+	}
+}
+
+// TestValidator_Email_RFCCompliance tests the validator Email method with RFC compliance
+func TestValidator_Email_RFCCompliance(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid standard", "user@example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"invalid consecutive dots", "user..name@example.com", true},
+		{"invalid no TLD", "user@example", true},
+		{"invalid starts with dot", ".user@example.com", true},
+		{"invalid space", "user name@example.com", true},
+		{"empty allows skip", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator()
+			v.Email("email", tt.email)
+			if (v.HasErrors()) != tt.wantErr {
+				t.Errorf("Email(%q) error = %v, wantErr %v", tt.email, v.HasErrors(), tt.wantErr)
+			}
+		})
+	}
+}

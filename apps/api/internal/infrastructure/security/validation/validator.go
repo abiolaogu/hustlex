@@ -2,6 +2,7 @@ package validation
 
 import (
 	"errors"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -46,7 +47,8 @@ var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
 
-	// Email validation (simplified)
+	// Email validation is now handled by net/mail.ParseAddress (RFC-compliant)
+	// Deprecated: EmailRegex is kept for backwards compatibility but should not be used
 	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
@@ -171,10 +173,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC-compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := isValidEmail(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,12 +379,9 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC-compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
-		return errors.New("invalid email format")
-	}
-	return nil
+	return isValidEmail(email)
 }
 
 // ValidateBVN validates a BVN
@@ -429,4 +430,65 @@ func SanitizeString(s string) string {
 	// Trim whitespace
 	s = strings.TrimSpace(s)
 	return s
+}
+
+// isValidEmail validates email format using RFC-compliant parsing from net/mail
+// This replaces the previous regex-based validation with proper RFC 5321 compliance
+func isValidEmail(email string) error {
+	if email == "" {
+		return errors.New("email is empty")
+	}
+
+	// Use Go standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return errors.New("invalid email format")
+	}
+
+	// Additional checks beyond RFC parsing
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Check for at least one @ symbol (ParseAddress already does this, but explicit check)
+	if !strings.Contains(addr.Address, "@") {
+		return errors.New("invalid email format: missing @ symbol")
+	}
+
+	// Split local and domain parts
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return errors.New("invalid email format")
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	// Validate local part length (RFC 5321: max 64 characters)
+	if len(localPart) > 64 {
+		return errors.New("email local part too long (max 64 characters)")
+	}
+
+	// Validate domain part length (RFC 5321: max 255 characters)
+	if len(domainPart) > 255 {
+		return errors.New("email domain too long (max 255 characters)")
+	}
+
+	// Validate domain has at least one dot
+	if !strings.Contains(domainPart, ".") {
+		return errors.New("invalid email format: domain must contain at least one dot")
+	}
+
+	// Check for consecutive dots
+	if strings.Contains(addr.Address, "..") {
+		return errors.New("invalid email format: consecutive dots not allowed")
+	}
+
+	// Check domain doesn't start or end with dot or hyphen
+	if strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") ||
+		strings.HasPrefix(domainPart, "-") || strings.HasSuffix(domainPart, "-") {
+		return errors.New("invalid email format: invalid domain format")
+	}
+
+	return nil
 }
