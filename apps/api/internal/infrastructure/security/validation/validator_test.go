@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -105,8 +106,15 @@ func TestValidator_Email(t *testing.T) {
 	}{
 		{"valid email", "test@example.com", false},
 		{"valid with subdomain", "test@sub.example.com", false},
+		{"valid with plus", "test+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen", "test@my-domain.com", false},
+		{"valid with display name", "John Doe <john@example.com>", false},
 		{"invalid no @", "testexample.com", true},
 		{"invalid no domain", "test@", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid spaces", "test @example.com", true},
+		{"invalid missing local", "@example.com", true},
 		{"empty (skip)", "", false},
 	}
 
@@ -384,11 +392,53 @@ func TestValidatePhone(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
-	if err := ValidateEmail("test@example.com"); err != nil {
-		t.Errorf("ValidateEmail() unexpected error: %v", err)
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid simple", "test@example.com", false},
+		{"valid with subdomain", "test@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with display name", "John Doe <john@example.com>", false},
+		{"invalid format", "invalid", true},
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid missing local", "@example.com", true},
 	}
-	if err := ValidateEmail("invalid"); err == nil {
-		t.Error("ValidateEmail() expected error for invalid email")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateEmail_MaxLength(t *testing.T) {
+	// Create an email that exceeds 254 characters
+	// Local part (64 chars max) + @ + domain (189 chars) = 254 chars
+	longLocal := strings.Repeat("a", 64)
+	longDomain := strings.Repeat("b", 240) + ".com"
+	tooLongEmail := longLocal + "@" + longDomain
+
+	err := ValidateEmail(tooLongEmail)
+	if err == nil {
+		t.Error("ValidateEmail() expected error for email exceeding 254 characters")
+	}
+
+	// Test a valid long email (just under the limit)
+	validLongLocal := strings.Repeat("a", 60)
+	validLongDomain := strings.Repeat("b", 180) + ".com"
+	validLongEmail := validLongLocal + "@" + validLongDomain
+
+	err = ValidateEmail(validLongEmail)
+	if err != nil {
+		t.Errorf("ValidateEmail() unexpected error for valid long email: %v", err)
 	}
 }
 

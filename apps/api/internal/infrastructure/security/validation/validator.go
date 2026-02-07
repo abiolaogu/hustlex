@@ -2,6 +2,7 @@ package validation
 
 import (
 	"errors"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -171,11 +172,25 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value == "" {
+		return v
 	}
+
+	// Use net/mail for RFC-compliant email parsing
+	addr, err := mail.ParseAddress(value)
+	if err != nil {
+		v.errors.Add(field, "must be a valid email address")
+		return v
+	}
+
+	// Additional length validation (RFC 5321)
+	if len(addr.Address) > 254 {
+		v.errors.Add(field, "email address too long (max 254 characters)")
+		return v
+	}
+
 	return v
 }
 
@@ -375,11 +390,19 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
+	// Use net/mail for RFC-compliant email parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
 		return errors.New("invalid email format")
 	}
+
+	// Additional length validation (RFC 5321)
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
 	return nil
 }
 

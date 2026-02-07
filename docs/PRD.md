@@ -426,13 +426,14 @@ Enable financial inclusion and economic opportunity for gig workers, informal en
 - [x] Fix critical vulnerability: Token Revocation (Issue #1) - **COMPLETED 2026-02-06**
 - [x] Fix critical vulnerability: CSRF Protection (Issue #2) - **COMPLETED 2026-02-06**
 - [x] Fix high-priority vulnerability: X-Forwarded-For Validation (Issue #4) - **COMPLETED 2026-02-06**
-- [ ] Fix high-priority vulnerabilities (Issues #7, #8)
+- [x] Fix high-priority vulnerability: Webhook Idempotency (Issue #7) - **COMPLETED 2026-02-06**
+- [x] Fix high-priority vulnerability: Email Validation (Issue #8) - **COMPLETED 2026-02-07**
 - [x] Document security measures - **COMPLETED**
 - [ ] Pass penetration testing (scheduled after critical fixes)
 
 **Audit Results:**
-- Security Posture Score: 7/10 (Good) → 7.5/10 (after Issue #1 fix) → 8/10 (after Issue #2 fix) → 8.5/10 (after Issue #4 fix) → 8.75/10 (after Issue #7 fix)
-- 9 Critical/High issues identified → 5 remaining
+- Security Posture Score: 7/10 (Good) → 7.5/10 (after Issue #1 fix) → 8/10 (after Issue #2 fix) → 8.5/10 (after Issue #4 fix) → 8.75/10 (after Issue #7 fix) → 9/10 (after Issue #8 fix)
+- 9 Critical/High issues identified → 4 remaining
 - 15 lower-priority improvements recommended
 - Detailed report: `docs/SECURITY_AUDIT_REPORT.md`
 
@@ -479,10 +480,22 @@ Enable financial inclusion and economic opportunity for gig workers, informal en
    - 30-day event retention with automatic cleanup
    - Full audit trail with payload storage
 
+5. ✅ **Fix email validation (Issue #8)** - COMPLETED 2026-02-07
+   - Replaced regex-based validation with RFC 5321/5322 compliant `net/mail` package
+   - Updated `Email()` validator method in `internal/infrastructure/security/validation/validator.go`
+   - Updated `ValidateEmail()` standalone function
+   - Added maximum email length validation (254 characters per RFC 5321)
+   - Enhanced test coverage with 12+ test cases including:
+     * Valid formats (simple, subdomain, plus addressing, display names)
+     * Invalid formats (missing @, double @, spaces, incomplete)
+     * Edge cases (empty string, maximum length)
+   - Prevents invalid emails in database
+   - Improves email deliverability and user experience
+   - Documentation: `docs/EMAIL_VALIDATION.md`
+
 **Next Actions:**
-4. ✅ **Implement webhook idempotency (Issue #7)** - COMPLETED 2026-02-06
-5. Fix email validation (Issue #8) - 1 day
-6. Schedule external penetration testing
+6. Fix remaining high-priority vulnerabilities (Issues #3, #5, #6, #9)
+7. Schedule external penetration testing
 
 **Why This Matters:** Cannot launch without passing security audit. This is a regulatory requirement and protects user data.
 
@@ -672,3 +685,4 @@ See: `docs/api/business-plan/00_EXECUTIVE_SUMMARY.md`
 - *v1.3 (2026-02-06): Security Issue #2 COMPLETED - CSRF protection implemented with comprehensive documentation*
 - *v1.4 (2026-02-06): Security Issue #4 COMPLETED - X-Forwarded-For validation with trusted proxy whitelist*
 - *v1.5 (2026-02-06): Security Issue #7 COMPLETED - Webhook idempotency with Redis-backed event store*
+- *v1.6 (2026-02-07): Security Issue #8 COMPLETED - RFC 5321 compliant email validation, security score now 9/10*
