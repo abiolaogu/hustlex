@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -46,7 +48,10 @@ var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
 
-	// Email validation (simplified)
+	// Email validation (simplified regex - DEPRECATED)
+	// Note: For RFC 5321 compliant email validation, use ValidateEmail() function
+	// which leverages Go's net/mail.ParseAddress instead of regex.
+	// This regex is kept for backward compatibility but should not be used directly.
 	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
@@ -171,10 +176,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC-compliant validation
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := ValidateEmail(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,11 +382,54 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC-compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
-		return errors.New("invalid email format")
+	// Use Go standard library for RFC 5321 compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
 	}
+
+	// Additional checks
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Verify the address contains @ symbol and proper structure
+	if !strings.Contains(addr.Address, "@") {
+		return errors.New("email must contain @ symbol")
+	}
+
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return errors.New("email must have exactly one @ symbol")
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	// Local part validation (before @)
+	if len(localPart) == 0 || len(localPart) > 64 {
+		return errors.New("email local part must be 1-64 characters")
+	}
+
+	// Domain part validation (after @)
+	if len(domainPart) == 0 || len(domainPart) > 255 {
+		return errors.New("email domain must be 1-255 characters")
+	}
+
+	// Domain must have at least one dot
+	if !strings.Contains(domainPart, ".") {
+		return errors.New("email domain must contain at least one dot")
+	}
+
+	// TLD must be at least 2 characters
+	domainParts := strings.Split(domainPart, ".")
+	tld := domainParts[len(domainParts)-1]
+	if len(tld) < 2 {
+		return errors.New("email top-level domain must be at least 2 characters")
+	}
+
 	return nil
 }
 

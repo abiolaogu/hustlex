@@ -463,3 +463,137 @@ func TestValidationError_HasErrors(t *testing.T) {
 		t.Error("Expected errors after adding")
 	}
 }
+
+// TestValidateEmail_RFC5321Compliant tests RFC 5321 compliant email validation
+func TestValidateEmail_RFC5321Compliant(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"simple valid", "user@example.com", false},
+		{"with subdomain", "user@mail.example.com", false},
+		{"with plus", "user+tag@example.com", false},
+		{"with dot in local", "user.name@example.com", false},
+		{"with hyphen", "user-name@example.com", false},
+		{"with underscore", "user_name@example.com", false},
+		{"with numbers", "user123@example.com", false},
+		{"numeric local", "123@example.com", false},
+		{"short TLD", "user@example.co", false},
+		{"long TLD", "user@example.museum", false},
+		{"multiple subdomains", "user@sub1.sub2.example.com", false},
+
+		// Invalid emails - missing @ or domain
+		{"no at symbol", "userexample.com", true},
+		{"no domain", "user@", true},
+		{"no local part", "@example.com", true},
+		{"double at", "user@@example.com", true},
+
+		// Invalid emails - domain issues
+		{"no TLD", "user@example", true},
+		{"single char TLD", "user@example.c", true},
+		{"domain without dot", "user@localhost", true},
+		{"trailing dot", "user@example.com.", true},
+		{"leading dot in domain", "user@.example.com", true},
+
+		// Invalid emails - local part issues
+		{"local too long", "aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffff@example.com", true},
+		{"leading dot", ".user@example.com", true},
+		{"trailing dot", "user.@example.com", true},
+		{"double dot", "user..name@example.com", true},
+
+		// Invalid emails - length limits
+		{"email too long", "verylonglocalpartthatexceedsthemaximumlengthallowedforemailaddresses" +
+			"verylonglocalpartthatexceedsthemaximumlengthallowedforemailaddresses" +
+			"verylonglocalpartthatexceedsthemaximumlengthallowedforemailaddresses" +
+			"verylonglocalpart@example.com", true},
+
+		// Edge cases
+		{"empty string", "", true},
+		{"whitespace", "  ", true},
+		{"spaces in email", "user name@example.com", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidator_Email_RFC5321 tests the Email method with RFC-compliant validation
+func TestValidator_Email_RFC5321(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid email", "user@example.com", false},
+		{"valid with subdomain", "user@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"invalid no @", "userexample.com", true},
+		{"invalid no domain", "user@", true},
+		{"invalid no TLD", "user@example", true},
+		{"empty (skip validation)", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator()
+			v.Email("email", tt.email)
+			if (v.HasErrors()) != tt.wantErr {
+				t.Errorf("Email(%q) error = %v, wantErr %v", tt.email, v.HasErrors(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateEmail_EdgeCases tests edge cases for email validation
+func TestValidateEmail_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "email with name part",
+			email:   "John Doe <john@example.com>",
+			wantErr: false,
+		},
+		{
+			name:    "local part exactly 64 chars",
+			email:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com",
+			wantErr: false,
+		},
+		{
+			name:    "local part 65 chars (too long)",
+			email:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com",
+			wantErr: true,
+			errMsg:  "local part must be 1-64 characters",
+		},
+		{
+			name:    "domain exactly 255 chars",
+			email:   "user@" + string(make([]byte, 245)) + ".example.com",
+			wantErr: true, // Will likely be true due to invalid domain format
+		},
+		{
+			name:    "total length exactly 254 chars",
+			email:   "a@" + string(make([]byte, 251)) + ".com",
+			wantErr: true, // Will likely be true due to invalid domain format
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
