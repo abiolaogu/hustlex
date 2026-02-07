@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -46,7 +48,8 @@ var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
 
-	// Email validation (simplified)
+	// Email validation (simplified) - DEPRECATED: Use IsValidEmail() instead for RFC 5321 compliance
+	// This regex is kept for backward compatibility but should not be used for new code
 	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
@@ -171,10 +174,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant validation
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := IsValidEmail(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,11 +380,73 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant validation
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
-		return errors.New("invalid email format")
+	return IsValidEmail(email)
+}
+
+// IsValidEmail performs RFC 5321 compliant email validation
+func IsValidEmail(email string) error {
+	// Trim whitespace
+	email = strings.TrimSpace(email)
+
+	// Check email length (RFC 5321: max 254 characters for entire address)
+	if len(email) == 0 {
+		return errors.New("email address cannot be empty")
 	}
+	if len(email) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Use Go's standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// Ensure the parsed address matches the input (handles edge cases)
+	if addr.Address != email {
+		return errors.New("email format contains invalid characters")
+	}
+
+	// Additional validation: check for local and domain parts
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return errors.New("email must contain exactly one @ symbol")
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	// Validate local part (before @) - RFC 5321: max 64 characters
+	if len(localPart) == 0 {
+		return errors.New("email local part cannot be empty")
+	}
+	if len(localPart) > 64 {
+		return errors.New("email local part too long (max 64 characters)")
+	}
+
+	// Validate domain part (after @)
+	if len(domainPart) == 0 {
+		return errors.New("email domain cannot be empty")
+	}
+	if len(domainPart) > 253 {
+		return errors.New("email domain too long (max 253 characters)")
+	}
+
+	// Check domain has at least one dot
+	if !strings.Contains(domainPart, ".") {
+		return errors.New("email domain must contain at least one dot")
+	}
+
+	// Check domain doesn't start or end with dot or hyphen
+	if strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") {
+		return errors.New("email domain cannot start or end with a dot")
+	}
+	if strings.HasPrefix(domainPart, "-") || strings.HasSuffix(domainPart, "-") {
+		return errors.New("email domain cannot start or end with a hyphen")
+	}
+
 	return nil
 }
 

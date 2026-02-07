@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -389,6 +390,57 @@ func TestValidateEmail(t *testing.T) {
 	}
 	if err := ValidateEmail("invalid"); err == nil {
 		t.Error("ValidateEmail() expected error for invalid email")
+	}
+}
+
+func TestIsValidEmail(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"valid standard email", "test@example.com", false},
+		{"valid with subdomain", "user@mail.example.com", false},
+		{"valid with plus", "test+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen in domain", "test@my-domain.com", false},
+		{"valid with numbers", "user123@example456.com", false},
+		{"valid with underscore", "test_user@example.com", false},
+		{"valid long domain", "user@subdomain.example.co.uk", false},
+
+		// Invalid emails - missing parts
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid no local part", "@example.com", true},
+		{"invalid empty", "", true},
+
+		// Invalid emails - format issues
+		{"invalid double @", "test@@example.com", true},
+		{"invalid space", "test @example.com", true},
+		{"invalid no TLD", "test@example", true},
+		{"invalid starts with dot", "test@.example.com", true},
+		{"invalid ends with dot", "test@example.com.", true},
+		{"invalid starts with hyphen", "test@-example.com", true},
+		{"invalid ends with hyphen", "test@example.com-", true},
+
+		// Invalid emails - length constraints
+		{"invalid too long", "a" + strings.Repeat("b", 250) + "@example.com", true},
+		{"invalid local too long", strings.Repeat("a", 65) + "@example.com", true},
+		{"invalid domain too long", "test@" + strings.Repeat("a", 250) + ".com", true},
+
+		// Edge cases
+		{"whitespace trimmed", "  test@example.com  ", false},
+		{"valid minimal", "a@b.c", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := IsValidEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("IsValidEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
 	}
 }
 
