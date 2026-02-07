@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -171,10 +173,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := isValidEmailAddress(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,11 +379,66 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
-		return errors.New("invalid email format")
+	return isValidEmailAddress(email)
+}
+
+// isValidEmailAddress performs RFC 5321 compliant email validation
+func isValidEmailAddress(email string) error {
+	// Use Go standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
 	}
+
+	// Additional validation: check email length (RFC 5321)
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Ensure the address portion is not empty
+	if addr.Address == "" {
+		return errors.New("email address cannot be empty")
+	}
+
+	// Basic structure validation: must contain @ and domain
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return errors.New("invalid email format: missing @ symbol")
+	}
+
+	localPart := parts[0]
+	domain := parts[1]
+
+	// Validate local part (before @)
+	if len(localPart) == 0 || len(localPart) > 64 {
+		return errors.New("invalid email format: local part length must be 1-64 characters")
+	}
+
+	// Validate domain part (after @)
+	if len(domain) == 0 || len(domain) > 253 {
+		return errors.New("invalid email format: domain length must be 1-253 characters")
+	}
+
+	// Ensure domain has at least one dot
+	if !strings.Contains(domain, ".") {
+		return errors.New("invalid email format: domain must contain at least one dot")
+	}
+
+	// Check for consecutive dots in domain
+	if strings.Contains(domain, "..") {
+		return errors.New("invalid email format: domain cannot contain consecutive dots")
+	}
+
+	// Check domain doesn't start or end with dot or hyphen
+	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		return errors.New("invalid email format: domain cannot start or end with a dot")
+	}
+	if strings.HasPrefix(domain, "-") || strings.HasSuffix(domain, "-") {
+		return errors.New("invalid email format: domain cannot start or end with a hyphen")
+	}
+
 	return nil
 }
 
