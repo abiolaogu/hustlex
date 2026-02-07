@@ -2,6 +2,9 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -46,7 +49,8 @@ var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
 
-	// Email validation (simplified)
+	// Email validation (deprecated - use RFC-compliant mail.ParseAddress instead)
+	// Kept for backward compatibility but not used in validation
 	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
@@ -171,11 +175,32 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parser
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value == "" {
+		return v
 	}
+
+	// Use Go's standard library for RFC-compliant email parsing
+	addr, err := mail.ParseAddress(value)
+	if err != nil {
+		v.errors.Add(field, "must be a valid email address")
+		return v
+	}
+
+	// Additional RFC checks
+	if len(addr.Address) > 254 {
+		v.errors.Add(field, "email address too long (max 254 characters)")
+		return v
+	}
+
+	// Validate domain part has at least one dot
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 || !strings.Contains(parts[1], ".") {
+		v.errors.Add(field, "must be a valid email address")
+		return v
+	}
+
 	return v
 }
 
@@ -375,11 +400,51 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant parser
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
-		return errors.New("invalid email format")
+	if email == "" {
+		return errors.New("email is required")
 	}
+
+	// Use Go's standard library for RFC-compliant email parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// Additional RFC checks
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Validate domain part has at least one dot
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 || !strings.Contains(parts[1], ".") {
+		return errors.New("invalid email format: domain must contain at least one dot")
+	}
+
+	return nil
+}
+
+// ValidateEmailWithDNS validates an email address and optionally checks DNS MX records
+func ValidateEmailWithDNS(email string, checkDNS bool) error {
+	// First do basic RFC validation
+	if err := ValidateEmail(email); err != nil {
+		return err
+	}
+
+	// Optional DNS MX record validation
+	if checkDNS {
+		addr, _ := mail.ParseAddress(email)
+		parts := strings.Split(addr.Address, "@")
+		domain := parts[1]
+
+		mxRecords, err := net.LookupMX(domain)
+		if err != nil || len(mxRecords) == 0 {
+			return fmt.Errorf("email domain '%s' has no valid MX records", domain)
+		}
+	}
+
 	return nil
 }
 
