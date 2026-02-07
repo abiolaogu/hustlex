@@ -105,8 +105,16 @@ func TestValidator_Email(t *testing.T) {
 	}{
 		{"valid email", "test@example.com", false},
 		{"valid with subdomain", "test@sub.example.com", false},
+		{"valid with plus", "test+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen", "test-user@example-domain.com", false},
 		{"invalid no @", "testexample.com", true},
 		{"invalid no domain", "test@", true},
+		{"invalid no local part", "@example.com", true},
+		{"invalid no TLD", "test@example", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid too long email", "a" + string(make([]byte, 250)) + "@example.com", true},
+		{"invalid local part too long", string(make([]byte, 65)) + "@example.com", true},
 		{"empty (skip)", "", false},
 	}
 
@@ -384,11 +392,31 @@ func TestValidatePhone(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
-	if err := ValidateEmail("test@example.com"); err != nil {
-		t.Errorf("ValidateEmail() unexpected error: %v", err)
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid email", "test@example.com", false},
+		{"valid with subdomain", "user@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"invalid format", "invalid", true},
+		{"invalid no domain", "test@", true},
+		{"invalid no local", "@example.com", true},
+		{"invalid no TLD", "test@domain", true},
+		{"empty email", "", true},
+		{"too long", string(make([]byte, 255)) + "@example.com", true},
+		{"local part too long", string(make([]byte, 65)) + "@example.com", true},
 	}
-	if err := ValidateEmail("invalid"); err == nil {
-		t.Error("ValidateEmail() expected error for invalid email")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
 	}
 }
 
