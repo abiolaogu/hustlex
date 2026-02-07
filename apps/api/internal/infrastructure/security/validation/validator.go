@@ -2,6 +2,9 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -46,7 +49,8 @@ var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
 
-	// Email validation (simplified)
+	// Email validation (deprecated - use ValidateEmail() for RFC 5321 compliant validation)
+	// This regex is kept for backward compatibility but should not be used directly
 	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
@@ -171,10 +175,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := ValidateEmail(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,11 +381,42 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
+	return ValidateEmailWithDNS(email, false)
+}
+
+// ValidateEmailWithDNS validates an email address with optional DNS MX record validation
+func ValidateEmailWithDNS(email string, checkDNS bool) error {
+	// Use Go standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// Check maximum email length per RFC 5321
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Check local part length (before @)
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
 		return errors.New("invalid email format")
 	}
+	if len(parts[0]) > 64 {
+		return errors.New("email local part too long (max 64 characters)")
+	}
+
+	// Optional: DNS MX record validation
+	if checkDNS {
+		domain := parts[1]
+		mx, err := net.LookupMX(domain)
+		if err != nil || len(mx) == 0 {
+			return fmt.Errorf("email domain has no valid MX records: %s", domain)
+		}
+	}
+
 	return nil
 }
 
