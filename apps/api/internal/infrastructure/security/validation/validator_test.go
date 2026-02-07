@@ -103,10 +103,23 @@ func TestValidator_Email(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
+		// Valid emails
 		{"valid email", "test@example.com", false},
 		{"valid with subdomain", "test@sub.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dot", "first.last@example.com", false},
+		{"valid with hyphen", "user-name@example.com", false},
+
+		// Invalid emails
 		{"invalid no @", "testexample.com", true},
 		{"invalid no domain", "test@", true},
+		{"invalid no local part", "@example.com", true},
+		{"invalid no TLD", "test@example", true},
+		{"invalid spaces", "test @example.com", true},
+		{"invalid consecutive dots", "test..user@example.com", true},
+		{"invalid local part too long", strings.Repeat("a", 65) + "@example.com", true},
+
+		// Empty (skip validation)
 		{"empty (skip)", "", false},
 	}
 
@@ -384,11 +397,51 @@ func TestValidatePhone(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
-	if err := ValidateEmail("test@example.com"); err != nil {
-		t.Errorf("ValidateEmail() unexpected error: %v", err)
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"valid standard", "test@example.com", false},
+		{"valid with subdomain", "test@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dot", "first.last@example.com", false},
+		{"valid with hyphen", "user-name@example.com", false},
+		{"valid with underscore", "user_name@example.com", false},
+		{"valid with numbers", "user123@example.com", false},
+		{"valid short", "a@b.co", false},
+
+		// Invalid emails
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid no local part", "@example.com", true},
+		{"invalid no TLD", "test@example", true},
+		{"invalid multiple @", "test@@example.com", true},
+		{"invalid spaces", "test @example.com", true},
+		{"invalid leading dot", ".test@example.com", true},
+		{"invalid trailing dot", "test.@example.com", true},
+		{"invalid consecutive dots", "test..user@example.com", true},
+
+		// RFC 5321 length limits
+		{"valid max length", "a@" + strings.Repeat("b", 240) + ".com", false},
+		{"invalid too long", "a@" + strings.Repeat("b", 250) + ".com", true},
+		{"invalid local part too long", strings.Repeat("a", 65) + "@example.com", true},
+		{"valid local part max", strings.Repeat("a", 64) + "@example.com", false},
+
+		// Edge cases
+		{"invalid empty", "", true},
+		{"invalid only @", "@", true},
+		{"invalid no dot in domain", "test@example", true},
 	}
-	if err := ValidateEmail("invalid"); err == nil {
-		t.Error("ValidateEmail() expected error for invalid email")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
 	}
 }
 

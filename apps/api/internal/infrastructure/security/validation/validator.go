@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -46,7 +48,8 @@ var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
 
-	// Email validation (simplified)
+	// Email validation is now handled by RFC-compliant parser (net/mail.ParseAddress)
+	// Deprecated: EmailRegex is kept for backward compatibility but not used for validation
 	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
@@ -171,10 +174,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := ValidateEmail(value); err != nil {
+			v.errors.Add(field, err.Error())
+		}
 	}
 	return v
 }
@@ -375,11 +380,48 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
-		return errors.New("invalid email format")
+	// Use Go standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("must be a valid email address")
 	}
+
+	// Additional checks for email length (RFC 5321)
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (maximum 254 characters)")
+	}
+
+	// Check for local part length (before @)
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return errors.New("must be a valid email address")
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	// RFC 5321: local part max 64 characters
+	if len(localPart) > 64 {
+		return errors.New("email local part too long (maximum 64 characters)")
+	}
+
+	// RFC 5321: domain part max 255 characters
+	if len(domainPart) > 255 {
+		return errors.New("email domain too long (maximum 255 characters)")
+	}
+
+	// Ensure domain has at least one dot
+	if !strings.Contains(domainPart, ".") {
+		return errors.New("email domain must contain at least one dot")
+	}
+
+	// Check for empty local or domain parts
+	if localPart == "" || domainPart == "" {
+		return errors.New("must be a valid email address")
+	}
+
 	return nil
 }
 
