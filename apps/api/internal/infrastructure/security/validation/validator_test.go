@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -389,6 +390,138 @@ func TestValidateEmail(t *testing.T) {
 	}
 	if err := ValidateEmail("invalid"); err == nil {
 		t.Error("ValidateEmail() expected error for invalid email")
+	}
+}
+
+func TestValidateEmailRFC(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"valid simple", "test@example.com", false},
+		{"valid with subdomain", "test@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dot", "first.last@example.com", false},
+		{"valid with dash", "user-name@example.com", false},
+		{"valid with underscore", "user_name@example.com", false},
+		{"valid with numbers", "user123@example.com", false},
+		{"valid short local", "a@example.com", false},
+		{"valid short domain", "test@a.co", false},
+		{"valid with display name", "John Doe <john@example.com>", false},
+
+		// Invalid emails - format
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid no local", "@example.com", true},
+		{"invalid no tld", "test@example", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid spaces", "test @example.com", true},
+		{"invalid trailing dot", "test@example.com.", true},
+
+		// Invalid emails - length limits
+		{"invalid too long", "verylongemailaddress" + strings.Repeat("x", 240) + "@example.com", true},
+		{"invalid local too long", strings.Repeat("x", 65) + "@example.com", true},
+		{"invalid domain too long", "test@" + strings.Repeat("x", 250) + ".com", true},
+
+		// Edge cases
+		{"empty", "", true},
+		{"whitespace only", "   ", true},
+		{"with leading space", " test@example.com", false}, // trimmed
+		{"with trailing space", "test@example.com ", false}, // trimmed
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmailRFC(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmailRFC(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateEmailRFC_LengthLimits(t *testing.T) {
+	// Test maximum valid email length (254 characters)
+	// Local part: 64 chars, @ = 1, domain = 189 chars (254 - 64 - 1 = 189)
+	validLocalPart := strings.Repeat("a", 64)
+	validDomain := strings.Repeat("b", 240) + ".com" // 244 chars domain
+	validEmail := validLocalPart + "@example.com"    // Should be valid
+
+	if err := ValidateEmailRFC(validEmail); err != nil {
+		t.Errorf("ValidateEmailRFC() with 64-char local part should be valid, got error: %v", err)
+	}
+
+	// Test local part length limit (65 chars should fail)
+	invalidLocalPart := strings.Repeat("a", 65)
+	invalidEmail := invalidLocalPart + "@example.com"
+
+	if err := ValidateEmailRFC(invalidEmail); err == nil {
+		t.Error("ValidateEmailRFC() should reject local part > 64 characters")
+	}
+
+	// Test overall length limit (255 chars should fail)
+	longLocal := strings.Repeat("a", 64)
+	longDomain := strings.Repeat("b", 190) + ".com" // Total would exceed 254
+	longEmail := longLocal + "@" + longDomain
+
+	if err := ValidateEmailRFC(longEmail); err == nil {
+		t.Error("ValidateEmailRFC() should reject email > 254 characters")
+	}
+}
+
+func TestValidateEmailRFC_RFC5321Compliance(t *testing.T) {
+	// Test cases specifically for RFC 5321 compliance
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid per RFC 5321
+		{"quoted local part", `"john..doe"@example.com`, false},
+		{"dot in local", "first.last@example.com", false},
+		{"multiple subdomains", "user@mail.company.example.com", false},
+
+		// Invalid per RFC 5321
+		{"consecutive dots", "john..doe@example.com", true},
+		{"leading dot", ".john@example.com", true},
+		{"trailing dot local", "john.@example.com", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmailRFC(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmailRFC(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidator_Email_RFC(t *testing.T) {
+	// Test the Validator.Email() method with RFC-compliant validation
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid", "test@example.com", false},
+		{"valid with subdomain", "test@mail.example.com", false},
+		{"invalid no @", "invalid", true},
+		{"invalid no domain", "test@", true},
+		{"invalid too long", strings.Repeat("x", 260) + "@example.com", true},
+		{"empty (skip)", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator()
+			v.Email("email", tt.email)
+			if tt.wantErr != v.HasErrors() {
+				t.Errorf("Email(%q) error = %v, wantErr %v", tt.email, v.HasErrors(), tt.wantErr)
+			}
+		})
 	}
 }
 
