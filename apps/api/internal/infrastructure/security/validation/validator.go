@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -45,9 +47,6 @@ func NewValidationError() *ValidationError {
 var (
 	// Nigerian phone number: +234XXXXXXXXXX or 0XXXXXXXXXX
 	PhoneRegex = regexp.MustCompile(`^(\+234|0)[789][01]\d{8}$`)
-
-	// Email validation (simplified)
-	EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 	// BVN: 11 digits
 	BVNRegex = regexp.MustCompile(`^\d{11}$`)
@@ -171,11 +170,31 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value == "" {
+		return v
 	}
+
+	// Use Go's standard library for RFC-compliant email parsing
+	addr, err := mail.ParseAddress(value)
+	if err != nil {
+		v.errors.Add(field, "must be a valid email address")
+		return v
+	}
+
+	// Additional validation: maximum length (RFC 5321)
+	if len(addr.Address) > 254 {
+		v.errors.Add(field, "email address is too long (max 254 characters)")
+		return v
+	}
+
+	// Ensure the parsed address matches the input (prevents display name tricks)
+	if addr.Address != value {
+		v.errors.Add(field, "must be a valid email address")
+		return v
+	}
+
 	return v
 }
 
@@ -375,11 +394,28 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using RFC 5321 compliant parsing
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
+	if email == "" {
+		return errors.New("email is required")
+	}
+
+	// Use Go's standard library for RFC-compliant email parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// Additional validation: maximum length (RFC 5321)
+	if len(addr.Address) > 254 {
+		return errors.New("email address is too long (max 254 characters)")
+	}
+
+	// Ensure the parsed address matches the input (prevents display name tricks)
+	if addr.Address != email {
 		return errors.New("invalid email format")
 	}
+
 	return nil
 }
 

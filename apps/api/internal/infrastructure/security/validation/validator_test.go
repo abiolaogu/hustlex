@@ -103,11 +103,31 @@ func TestValidator_Email(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
+		// Valid emails
 		{"valid email", "test@example.com", false},
 		{"valid with subdomain", "test@sub.example.com", false},
+		{"valid with plus", "test+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen", "test-user@example.com", false},
+		{"valid with numbers", "user123@example.com", false},
+		{"valid short domain", "test@ex.co", false},
+		{"valid long domain", "test@very.long.domain.example.com", false},
+
+		// Invalid emails
 		{"invalid no @", "testexample.com", true},
 		{"invalid no domain", "test@", true},
+		{"invalid no local part", "@example.com", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid spaces", "test user@example.com", true},
+		{"invalid no TLD", "test@localhost", true},
+		{"invalid trailing dot", "test@example.com.", true},
+		{"invalid leading dot", ".test@example.com", true},
+		{"invalid consecutive dots", "test..user@example.com", true},
+		{"invalid with display name", "Test User <test@example.com>", true},
+
+		// Edge cases
 		{"empty (skip)", "", false},
+		{"too long email", "verylongemailaddressthatexceedsthemaximumlengthof254charactersaccordingtorfc5321thisisareallylongemailaddressverylongemailaddressthatexceedsthemaximumlengthof254charactersaccordingtorfc5321thisisareallylongemailaddressverylongemailaddressthatexceeds@example.com", true},
 	}
 
 	for _, tt := range tests {
@@ -384,11 +404,35 @@ func TestValidatePhone(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
-	if err := ValidateEmail("test@example.com"); err != nil {
-		t.Errorf("ValidateEmail() unexpected error: %v", err)
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"valid standard", "test@example.com", false},
+		{"valid with subdomain", "test@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+
+		// Invalid emails
+		{"invalid format", "invalid", true},
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid empty", "", true},
+		{"invalid spaces", "test user@example.com", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid with display name", "John Doe <john@example.com>", true},
+		{"invalid too long", "verylongemailaddressthatexceedsthemaximumlengthof254charactersaccordingtorfc5321thisisareallylongemailaddressverylongemailaddressthatexceedsthemaximumlengthof254charactersaccordingtorfc5321thisisareallylongemailaddressverylongemailaddressthatexceeds@example.com", true},
 	}
-	if err := ValidateEmail("invalid"); err == nil {
-		t.Error("ValidateEmail() expected error for invalid email")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
 	}
 }
 
