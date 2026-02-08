@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -171,10 +173,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := IsValidEmail(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,11 +379,53 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address (deprecated, use IsValidEmail instead)
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
+	return IsValidEmail(email)
+}
+
+// IsValidEmail validates an email address using RFC 5321 compliant parsing
+func IsValidEmail(email string) error {
+	// Trim whitespace
+	email = strings.TrimSpace(email)
+
+	// Check if empty
+	if email == "" {
+		return errors.New("email address is empty")
+	}
+
+	// Use Go's standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// Additional checks
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Ensure the parsed address matches the input (no display name)
+	if addr.Address != email {
+		return errors.New("email must not contain display name")
+	}
+
+	// Basic domain check - must have at least one dot
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
 		return errors.New("invalid email format")
 	}
+
+	domain := parts[1]
+	if !strings.Contains(domain, ".") {
+		return errors.New("invalid email domain")
+	}
+
+	// Check for consecutive dots
+	if strings.Contains(addr.Address, "..") {
+		return errors.New("email contains consecutive dots")
+	}
+
 	return nil
 }
 

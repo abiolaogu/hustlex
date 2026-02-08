@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -389,6 +390,64 @@ func TestValidateEmail(t *testing.T) {
 	}
 	if err := ValidateEmail("invalid"); err == nil {
 		t.Error("ValidateEmail() expected error for invalid email")
+	}
+}
+
+func TestIsValidEmail(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+		errMsg  string
+	}{
+		// Valid emails
+		{"valid simple", "user@example.com", false, ""},
+		{"valid with subdomain", "user@mail.example.com", false, ""},
+		{"valid with plus", "user+tag@example.com", false, ""},
+		{"valid with dash", "user-name@example.com", false, ""},
+		{"valid with dots", "first.last@example.com", false, ""},
+		{"valid with numbers", "user123@example.com", false, ""},
+		{"valid short domain", "a@b.co", false, ""},
+		{"valid long domain", "user@subdomain.example.co.uk", false, ""},
+
+		// Invalid emails - format issues
+		{"invalid no @", "userexample.com", true, "invalid email format"},
+		{"invalid no domain", "user@", true, "invalid email format"},
+		{"invalid no local", "@example.com", true, "invalid email format"},
+		{"invalid no TLD", "user@example", true, "invalid email domain"},
+		{"invalid double @", "user@@example.com", true, "invalid email format"},
+		{"invalid consecutive dots", "user..name@example.com", true, "email contains consecutive dots"},
+		{"invalid starts with dot", ".user@example.com", true, "invalid email format"},
+		{"invalid ends with dot", "user.@example.com", true, "invalid email format"},
+		{"invalid spaces", "user name@example.com", true, "invalid email format"},
+		{"invalid special chars", "user!#$@example.com", true, "invalid email format"},
+
+		// Empty/whitespace
+		{"empty string", "", true, "email address is empty"},
+		{"whitespace only", "   ", true, "email address is empty"},
+
+		// Length validation
+		{"too long", strings.Repeat("a", 250) + "@example.com", true, "email address too long"},
+
+		// Display name (should be rejected)
+		{"with display name", "User Name <user@example.com>", true, "email must not contain display name"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := IsValidEmail(tt.email)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("IsValidEmail(%q) expected error, got none", tt.email)
+				} else if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("IsValidEmail(%q) error = %v, want error containing %q", tt.email, err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("IsValidEmail(%q) unexpected error: %v", tt.email, err)
+				}
+			}
+		})
 	}
 }
 

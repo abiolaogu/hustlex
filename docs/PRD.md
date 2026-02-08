@@ -426,13 +426,13 @@ Enable financial inclusion and economic opportunity for gig workers, informal en
 - [x] Fix critical vulnerability: Token Revocation (Issue #1) - **COMPLETED 2026-02-06**
 - [x] Fix critical vulnerability: CSRF Protection (Issue #2) - **COMPLETED 2026-02-06**
 - [x] Fix high-priority vulnerability: X-Forwarded-For Validation (Issue #4) - **COMPLETED 2026-02-06**
-- [ ] Fix high-priority vulnerabilities (Issues #7, #8)
+- [x] Fix high-priority vulnerabilities (Issues #7, #8) - **COMPLETED 2026-02-08**
 - [x] Document security measures - **COMPLETED**
 - [ ] Pass penetration testing (scheduled after critical fixes)
 
 **Audit Results:**
-- Security Posture Score: 7/10 (Good) → 7.5/10 (after Issue #1 fix) → 8/10 (after Issue #2 fix) → 8.5/10 (after Issue #4 fix) → 8.75/10 (after Issue #7 fix)
-- 9 Critical/High issues identified → 5 remaining
+- Security Posture Score: 7/10 (Good) → 7.5/10 (after Issue #1 fix) → 8/10 (after Issue #2 fix) → 8.5/10 (after Issue #4 fix) → 8.75/10 (after Issue #7 fix) → 9/10 (after Issue #8 fix)
+- 9 Critical/High issues identified → 4 remaining
 - 15 lower-priority improvements recommended
 - Detailed report: `docs/SECURITY_AUDIT_REPORT.md`
 
@@ -479,9 +479,27 @@ Enable financial inclusion and economic opportunity for gig workers, informal en
    - 30-day event retention with automatic cleanup
    - Full audit trail with payload storage
 
+5. ✅ **Fix email validation (Issue #8)** - COMPLETED 2026-02-08
+   - Replaced regex-based email validation with RFC 5321 compliant parsing
+   - Implemented using Go's standard library `net/mail` package
+   - Added comprehensive validation checks:
+     * RFC-compliant email format parsing
+     * Maximum length validation (254 characters)
+     * Domain validation (must contain at least one dot)
+     * Consecutive dots detection and rejection
+     * Display name detection and rejection
+     * Whitespace trimming and empty string handling
+   - Created new `IsValidEmail()` function with detailed error messages
+   - Maintained backward compatibility with existing `ValidateEmail()` function
+   - Comprehensive test suite with 20+ test cases covering:
+     * Valid email formats (simple, subdomains, plus addressing, dashes, dots)
+     * Invalid formats (missing @, no domain, no TLD, special chars)
+     * Edge cases (length limits, consecutive dots, display names)
+   - Location: `apps/api/internal/infrastructure/security/validation/validator.go`
+
 **Next Actions:**
 4. ✅ **Implement webhook idempotency (Issue #7)** - COMPLETED 2026-02-06
-5. Fix email validation (Issue #8) - 1 day
+5. ✅ **Fix email validation (Issue #8)** - COMPLETED 2026-02-08
 6. Schedule external penetration testing
 
 **Why This Matters:** Cannot launch without passing security audit. This is a regulatory requirement and protects user data.
@@ -672,3 +690,4 @@ See: `docs/api/business-plan/00_EXECUTIVE_SUMMARY.md`
 - *v1.3 (2026-02-06): Security Issue #2 COMPLETED - CSRF protection implemented with comprehensive documentation*
 - *v1.4 (2026-02-06): Security Issue #4 COMPLETED - X-Forwarded-For validation with trusted proxy whitelist*
 - *v1.5 (2026-02-06): Security Issue #7 COMPLETED - Webhook idempotency with Redis-backed event store*
+- *v1.6 (2026-02-08): Security Issue #8 COMPLETED - RFC-compliant email validation using net/mail package*
