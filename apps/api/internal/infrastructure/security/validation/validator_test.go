@@ -463,3 +463,168 @@ func TestValidationError_HasErrors(t *testing.T) {
 		t.Error("Expected errors after adding")
 	}
 }
+
+// TestValidateEmailRFC tests RFC-compliant email validation
+func TestValidateEmailRFC(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// Valid emails
+		{"valid simple", "test@example.com", false},
+		{"valid subdomain", "user@mail.example.com", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen", "user-name@example.com", false},
+		{"valid with underscore", "user_name@example.com", false},
+		{"valid with numbers", "user123@example123.com", false},
+		{"valid short local", "a@example.com", false},
+		{"valid short domain", "user@ex.co", false},
+		{"valid with display name", "John Doe <john@example.com>", false},
+
+		// Invalid emails - missing @ or domain
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid no local", "@example.com", true},
+		{"invalid no TLD", "test@example", true},
+
+		// Invalid emails - length violations
+		{"invalid local too long", "aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffff@example.com", true}, // 65 chars local
+		{"invalid total too long", "user@" + generateLongString(250) + ".com", true}, // >254 chars total
+
+		// Invalid emails - format issues
+		{"invalid consecutive dots", "user..name@example.com", true},
+		{"invalid double @", "user@@example.com", true},
+		{"invalid spaces", "user name@example.com", true},
+		{"invalid leading dot", ".user@example.com", true},
+		{"invalid trailing dot local", "user.@example.com", true},
+		{"invalid special chars", "user#name@example.com", true},
+
+		// Edge cases
+		{"empty string", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmailRFC(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmailRFC(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidator_EmailWithDNS tests email validation with optional DNS checking
+func TestValidator_EmailWithDNS(t *testing.T) {
+	tests := []struct {
+		name     string
+		email    string
+		checkDNS bool
+		wantErr  bool
+	}{
+		// Without DNS checking
+		{"valid without DNS", "test@example.com", false, false},
+		{"invalid format without DNS", "invalid", false, true},
+
+		// With DNS checking (these may fail in test environment without network)
+		{"valid with DNS check", "test@gmail.com", true, false},
+		{"invalid domain with DNS check", "test@nonexistent-domain-12345.com", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator()
+			v.EmailWithDNS("email", tt.email, tt.checkDNS)
+
+			// For DNS tests, skip if we're in an environment without network access
+			if tt.checkDNS && !tt.wantErr {
+				// Skip DNS validation success tests in CI/test environments
+				t.Skip("Skipping DNS validation test (requires network access)")
+			}
+
+			if tt.wantErr != v.HasErrors() {
+				t.Errorf("EmailWithDNS(%q, %v) error = %v, wantErr %v", tt.email, tt.checkDNS, v.HasErrors(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateEmailDomain tests DNS-based email domain validation
+func TestValidateEmailDomain(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+		skip    bool // Skip tests that require network access
+	}{
+		{"valid gmail", "test@gmail.com", false, true},
+		{"valid yahoo", "test@yahoo.com", false, true},
+		{"invalid format", "invalid-email", true, false},
+		{"nonexistent domain", "test@nonexistent-domain-xyz-12345.com", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skip {
+				t.Skip("Skipping DNS validation test (requires network access)")
+			}
+
+			err := ValidateEmailDomain(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmailDomain(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidator_Email_RFC_Compliance tests that the new Email validator uses RFC-compliant validation
+func TestValidator_Email_RFC_Compliance(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// These should pass with RFC-compliant validation
+		{"RFC valid quoted local", "\"user@host\"@example.com", false},
+		{"RFC valid with display", "John Doe <john@example.com>", false},
+
+		// These should fail
+		{"RFC invalid consecutive dots", "user..name@example.com", true},
+		{"RFC invalid too long", "user@" + generateLongString(250) + ".com", true},
+		{"RFC invalid no TLD", "user@localhost", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator()
+			v.Email("email", tt.email)
+			if tt.wantErr != v.HasErrors() {
+				t.Errorf("Email(%q) error = %v, wantErr %v", tt.email, v.HasErrors(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateEmail_BackwardCompatibility ensures the standalone function still works
+func TestValidateEmail_BackwardCompatibility(t *testing.T) {
+	// Test that ValidateEmail wrapper works
+	err := ValidateEmail("test@example.com")
+	if err != nil {
+		t.Errorf("ValidateEmail() should accept valid email, got error: %v", err)
+	}
+
+	err = ValidateEmail("invalid-email")
+	if err == nil {
+		t.Error("ValidateEmail() should reject invalid email")
+	}
+}
+
+// Helper function to generate long strings for testing
+func generateLongString(length int) string {
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = 'a'
+	}
+	return string(result)
+}
