@@ -2,6 +2,9 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -171,9 +174,13 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
+	if value == "" {
+		return v
+	}
+
+	if err := ValidateEmailRFC(value); err != nil {
 		v.errors.Add(field, "must be a valid email address")
 	}
 	return v
@@ -375,11 +382,66 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address (deprecated: use ValidateEmailRFC for RFC 5321 compliance)
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
+	return ValidateEmailRFC(email)
+}
+
+// ValidateEmailRFC validates an email address using RFC 5321 compliant parsing
+func ValidateEmailRFC(email string) error {
+	// Use Go standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// RFC 5321 specifies maximum length of 254 characters for email addresses
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Additional validation: ensure there's an @ symbol and domain part
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return errors.New("invalid email format: missing @ symbol")
+	}
+
+	localPart := parts[0]
+	domain := parts[1]
+
+	// Local part cannot be empty and has a max length of 64 characters (RFC 5321)
+	if len(localPart) == 0 || len(localPart) > 64 {
+		return errors.New("invalid email format: local part must be 1-64 characters")
+	}
+
+	// Domain part cannot be empty and must have at least one dot
+	if len(domain) == 0 || !strings.Contains(domain, ".") {
+		return errors.New("invalid email format: domain must contain at least one dot")
+	}
+
+	return nil
+}
+
+// ValidateEmailWithDNS validates an email address and optionally checks DNS MX records
+func ValidateEmailWithDNS(email string) error {
+	// First, validate the email format
+	if err := ValidateEmailRFC(email); err != nil {
+		return err
+	}
+
+	// Extract domain from email
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
 		return errors.New("invalid email format")
 	}
+	domain := parts[1]
+
+	// Check for MX records
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil || len(mxRecords) == 0 {
+		return fmt.Errorf("email domain has no valid MX records: %s", domain)
+	}
+
 	return nil
 }
 
