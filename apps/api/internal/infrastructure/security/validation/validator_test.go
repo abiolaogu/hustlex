@@ -105,8 +105,16 @@ func TestValidator_Email(t *testing.T) {
 	}{
 		{"valid email", "test@example.com", false},
 		{"valid with subdomain", "test@sub.example.com", false},
+		{"valid with name", "John Doe <john@example.com>", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen", "user@my-domain.com", false},
 		{"invalid no @", "testexample.com", true},
 		{"invalid no domain", "test@", true},
+		{"invalid no tld", "test@domain", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid spaces", "test @example.com", true},
+		{"invalid too long", "a" + strings.Repeat("x", 250) + "@example.com", true},
 		{"empty (skip)", "", false},
 	}
 
@@ -384,11 +392,57 @@ func TestValidatePhone(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
-	if err := ValidateEmail("test@example.com"); err != nil {
-		t.Errorf("ValidateEmail() unexpected error: %v", err)
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid simple", "test@example.com", false},
+		{"valid with subdomain", "test@mail.example.com", false},
+		{"valid with name", "John Doe <john@example.com>", false},
+		{"valid with plus", "user+tag@example.com", false},
+		{"valid with dots", "first.last@example.com", false},
+		{"valid with hyphen", "user@my-domain.com", false},
+		{"valid with numbers", "user123@example456.com", false},
+		{"invalid no @", "testexample.com", true},
+		{"invalid no domain", "test@", true},
+		{"invalid no tld", "test@domain", true},
+		{"invalid double @", "test@@example.com", true},
+		{"invalid spaces", "test @example.com", true},
+		{"invalid", "invalid", true},
+		{"invalid empty domain", "test@.com", true},
 	}
-	if err := ValidateEmail("invalid"); err == nil {
-		t.Error("ValidateEmail() expected error for invalid email")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmail(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateEmailRFC(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		{"valid simple", "test@example.com", false},
+		{"valid complex", "user+filter@sub.example.co.uk", false},
+		{"valid with name", "John Doe <john@example.com>", false},
+		{"invalid no tld", "test@domain", true},
+		{"invalid too long", "a" + strings.Repeat("x", 250) + "@example.com", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmailRFC(tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEmailRFC(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+			}
+		})
 	}
 }
 
