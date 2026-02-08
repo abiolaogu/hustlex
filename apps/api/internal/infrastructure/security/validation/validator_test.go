@@ -392,6 +392,87 @@ func TestValidateEmail(t *testing.T) {
 	}
 }
 
+func TestValidateEmailRFC(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+		errMsg  string
+	}{
+		// Valid cases
+		{"valid simple", "test@example.com", false, ""},
+		{"valid with subdomain", "user@mail.example.com", false, ""},
+		{"valid with plus", "user+tag@example.com", false, ""},
+		{"valid with dot", "first.last@example.com", false, ""},
+		{"valid with hyphen", "user@ex-ample.com", false, ""},
+		{"valid with numbers", "user123@example456.com", false, ""},
+		{"valid with underscore", "user_name@example.com", false, ""},
+
+		// Invalid cases - basic format
+		{"invalid no @", "userexample.com", true, "invalid email format"},
+		{"invalid multiple @", "user@@example.com", true, ""},
+		{"invalid no domain", "user@", true, ""},
+		{"invalid no local", "@example.com", true, ""},
+		{"invalid no tld", "user@example", true, "domain must contain"},
+		{"invalid empty", "", true, "cannot be empty"},
+		{"invalid spaces", "user @example.com", true, ""},
+
+		// Invalid cases - length violations
+		{"invalid too long", "a@" + strings.Repeat("x", 250) + ".com", true, "too long"},
+		{"invalid local too long", strings.Repeat("a", 65) + "@example.com", true, "local part too long"},
+
+		// Edge cases
+		{"valid max local length", strings.Repeat("a", 64) + "@example.com", false, ""},
+		{"valid max total length", "a@" + strings.Repeat("x", 240) + ".com", false, ""},
+		{"invalid double dot", "user..name@example.com", true, ""},
+		{"invalid leading dot", ".user@example.com", true, ""},
+		{"invalid trailing dot", "user.@example.com", true, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmailRFC(tt.email)
+			if tt.wantErr && err == nil {
+				t.Errorf("ValidateEmailRFC(%q) expected error, got nil", tt.email)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("ValidateEmailRFC(%q) unexpected error: %v", tt.email, err)
+			}
+			if tt.wantErr && err != nil && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("ValidateEmailRFC(%q) error = %v, want error containing %q", tt.email, err, tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateEmailWithDNS(t *testing.T) {
+	tests := []struct {
+		name    string
+		email   string
+		wantErr bool
+	}{
+		// These tests require actual DNS lookups
+		{"valid gmail", "test@gmail.com", false},
+		{"valid yahoo", "test@yahoo.com", false},
+		{"invalid domain", "test@thisisnotarealdomainfortesting12345.com", true},
+		{"invalid format", "invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmailWithDNS(tt.email)
+			if tt.wantErr && err == nil {
+				t.Errorf("ValidateEmailWithDNS(%q) expected error, got nil", tt.email)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("ValidateEmailWithDNS(%q) unexpected error: %v", tt.email, err)
+			}
+		})
+	}
+}
+
 func TestValidateAmount(t *testing.T) {
 	if err := ValidateAmount(5000, 100, 1000000); err != nil {
 		t.Errorf("ValidateAmount() unexpected error: %v", err)

@@ -2,6 +2,9 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
@@ -171,10 +174,12 @@ func (v *Validator) NonNegative(field string, value int64) *Validator {
 	return v
 }
 
-// Email validates email format
+// Email validates email format using RFC 5321 compliant parsing
 func (v *Validator) Email(field, value string) *Validator {
-	if value != "" && !EmailRegex.MatchString(value) {
-		v.errors.Add(field, "must be a valid email address")
+	if value != "" {
+		if err := ValidateEmailRFC(value); err != nil {
+			v.errors.Add(field, "must be a valid email address")
+		}
 	}
 	return v
 }
@@ -375,11 +380,84 @@ func ValidatePhone(phone string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address (deprecated: use ValidateEmailRFC)
 func ValidateEmail(email string) error {
-	if !EmailRegex.MatchString(email) {
+	return ValidateEmailRFC(email)
+}
+
+// ValidateEmailRFC validates an email address using RFC 5321 compliant parsing
+func ValidateEmailRFC(email string) error {
+	if email == "" {
+		return errors.New("email cannot be empty")
+	}
+
+	// Use Go's standard library for RFC-compliant parsing
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email format: %w", err)
+	}
+
+	// Additional length validation per RFC 5321
+	if len(addr.Address) > 254 {
+		return errors.New("email address too long (max 254 characters)")
+	}
+
+	// Verify the email has a proper domain part
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return errors.New("email must contain exactly one @ symbol")
+	}
+
+	localPart, domain := parts[0], parts[1]
+
+	// Local part validation (before @)
+	if len(localPart) > 64 {
+		return errors.New("email local part too long (max 64 characters)")
+	}
+	if localPart == "" {
+		return errors.New("email local part cannot be empty")
+	}
+
+	// Domain part validation (after @)
+	if len(domain) > 255 {
+		return errors.New("email domain too long (max 255 characters)")
+	}
+	if domain == "" {
+		return errors.New("email domain cannot be empty")
+	}
+
+	// Verify domain has at least one dot
+	if !strings.Contains(domain, ".") {
+		return errors.New("email domain must contain at least one dot")
+	}
+
+	return nil
+}
+
+// ValidateEmailWithDNS validates an email address and checks DNS MX records
+func ValidateEmailWithDNS(email string) error {
+	// First, validate format
+	if err := ValidateEmailRFC(email); err != nil {
+		return err
+	}
+
+	// Extract domain
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
 		return errors.New("invalid email format")
 	}
+	domain := parts[1]
+
+	// Check for MX records
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil || len(mxRecords) == 0 {
+		// Fallback: check for A records if no MX records found
+		aRecords, err := net.LookupHost(domain)
+		if err != nil || len(aRecords) == 0 {
+			return fmt.Errorf("email domain '%s' has no valid MX or A records", domain)
+		}
+	}
+
 	return nil
 }
 
